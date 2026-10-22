@@ -95,3 +95,13 @@ total. Behavior slices stay near or below 400 authored lines.
   `node --test`, zero dependencies, pnpm with `minimumReleaseAge`; no TypeScript build. Version
   `0.1.0`; MIT copyright holder `funky-forge contributors`. Measured environment: Node 24.16.0,
   npm 11.13.0, pnpm 12.3.4, git 2.47.1 on Windows.
+
+## Evidence
+
+| Task | Commit | Result |
+|---|---|---|
+| T1 | `71284c6` | Package scaffold; `funky-forge --help` exits 0, unknown command exits 1; `pnpm test` finds 0 tests |
+| T2 | `130fd79` | Method core: SKILL.md 87 lines, references 00-04, revision.md; pack files 12 excluding templates |
+| T3 | `bc269c4` | 3 reviewer briefs (46-60 lines), 2 schemas, 6 templates |
+| T4 | `4409477` | Project A validated end-to-end with 6 independent reviews; evidence in `docs/validation/project-a.md` |
+| T5 | — | pending |
