@@ -66,6 +66,20 @@ refine it, the task order, and the evidence. When in doubt, reread the RFC.
 | T13 | Wire the gate protocol into the skill, finish `README.md`, `docs/`, `npm pack --dry-run` smoke | S4, S9, S10 | inline | `docs: wire gate protocol and document usage` |
 | T14 | Acceptance sweep against RFC §20, final review, close the feature | all | assess + review | `chore: close funky-forge v1` |
 
+## Delivery slices
+
+| Slice | Tasks | Review unit |
+|---|---|---|
+| 1 | T1 | Repository creation and scaffold |
+| 2 | T2, T3 | The method pack (prose only, no executable behavior) |
+| 3 | T4, T5 | Validation evidence (scratch projects, no production code) |
+| 4 | T6, T7, T8 | CLI plumbing, `install`, `init` |
+| 5 | T9, T10, T11, T12 | `calc` and `check` |
+| 6 | T13, T14 | Documentation, wiring, acceptance sweep |
+
+Prose slices exceed 400 authored lines by design; the review unit is the commit, not the slice
+total. Behavior slices stay near or below 400 authored lines.
+
 ## Log
 
 - **L1** — User request, verbatim: "quiero arrancar con odd para implementar todo, desde la
