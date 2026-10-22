@@ -1,0 +1,34 @@
+{
+  "name": "funky-forge",
+  "version": "0.1.0",
+  "description": "Portable planning and quoting method with a deterministic CLI: four gated phases from a fuzzy idea to a client proposal.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "bin": {
+    "funky-forge": "./bin/funky-forge.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "skill",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "test:watch": "node --test --watch",
+    "pack:check": "npm pack --dry-run"
+  },
+  "keywords": [
+    "planning",
+    "estimation",
+    "proposal",
+    "agent-skills",
+    "cli"
+  ],
+  "dependencies": {},
+  "devDependencies": {}
+}

@@ -1,0 +1,3 @@
+# Repository settings (pnpm 10.16+). No workspace packages yet: this is a single package.
+# Supply-chain policy: refuse versions published less than 7 days ago (minutes).
+minimumReleaseAge: 10080
