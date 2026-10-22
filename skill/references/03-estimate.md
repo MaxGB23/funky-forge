@@ -101,7 +101,7 @@ changes the body and revokes approval.
 
 ## Other required content
 
-Assumptions and exclusions; sensitivity (which block moves the price most); ROI sanity check
+Assumptions and exclusions; sensitivity (which block moves the price most); ROI check
 against the brief's current cost. If the price exceeds the value the client gets in two years, say
 so. If the current cost is `unknown`, say so and do not invent it.
 
