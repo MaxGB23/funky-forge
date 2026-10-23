@@ -1,4 +1,4 @@
-# funky-forge
+# Funky Forge 👻
 
 Plan and quote software projects in four gated phases: problem, design, estimate, proposal.
 A portable skill pack for any agent harness, plus a small deterministic CLI for schemas,
@@ -16,16 +16,35 @@ accepts every risk.
 
 Node.js 20.11 or newer. No runtime dependencies, no build step, no network access.
 
+## Package manager
+
+pnpm is the recommended package manager, and every command in this README is written with it. The
+reason is supply-chain exposure: pnpm supports `minimumReleaseAge`, which refuses to install a
+version until it has been public for a configured number of minutes, so a compromised release has
+to survive that window before it can reach you. This repository pins seven days in
+`pnpm-workspace.yaml`:
+
+```yaml
+minimumReleaseAge: 10080
+```
+
+Set the same key in your global pnpm config to get that delay in every project. pnpm also resolves
+from a content-addressed store and keeps `node_modules` non-flat, which makes a package that starts
+running at install time visible instead of hidden in a nested tree.
+
+npm works too — the package has no dependencies, so nothing is installed either way — but it has no
+built-in equivalent to `minimumReleaseAge`. That is the only reason pnpm comes first here.
+
 ## Install
 
 ```sh
-npm install --global funky-forge     # once published
-funky-forge install                  # inside the project you want to plan
+pnpm add --global funky-forge     # once published; npm install --global funky-forge also works
+funky-forge install               # inside the project you want to plan
 funky-forge init
 ```
 
-With pnpm, install from the registry once published with `pnpm add --global funky-forge`. pnpm 12
-removed `pnpm link --global`, so the local-clone workflow uses the `link:` protocol instead:
+To run from a clone instead, with the binary following your edits, pnpm 12 uses the `link:` protocol
+(`pnpm link --global` no longer exists):
 
 ```sh
 git clone https://github.com/MaxGB23/funky-forge
@@ -38,7 +57,7 @@ pnpm remove --global funky-forge       # to unlink
 
 | Harness | Target | Flag |
 |---|---|---|
-| Pi, OpenCode, Codex CLI | `.agents/skills/funky-forge/` | `--target agents` |
+| Pi, OpenCode, Codex, Antigravity CLI, etc. | `.agents/skills/funky-forge/` | `--target agents` |
 | Claude Code | `.claude/skills/funky-forge/` | `--target claude` |
 
 Detection is automatic: a `.claude/` directory means Claude, a shared marker (`.agents/skills/`,
@@ -171,9 +190,12 @@ third time.
 
 ```sh
 pnpm test                # node --test, no dependencies to install
-pnpm pack --dry-run      # or npm pack --dry-run: inspect exactly what ships
+pnpm pack --dry-run      # inspect exactly what ships
 node bin/funky-forge.js  # run the working tree without linking anything
 ```
+
+Every command also works with npm (`npm test`, `npm pack --dry-run`); the repository just documents
+the pnpm path first, for the reason in Package manager.
 
 Layout: `bin/` entry point, `src/cli.js` dispatch, `src/commands/` one file per command,
 `src/lib/` parsers and rules, `skill/` the method pack that `install` copies, `tests/` unit and
