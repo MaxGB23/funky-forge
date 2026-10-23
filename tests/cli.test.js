@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -71,4 +71,38 @@ test('check requires a phase argument', () => {
   const { code, err } = run(['check']);
   assert.equal(code, 1);
   assert.match(err, /PHASE_REQUIRED/);
+});
+
+test('-h prints the global usage', () => {
+  const { code, out } = run(['-h']);
+  assert.equal(code, 0);
+  assert.equal(out, `${USAGE}\n`);
+});
+
+test('a command prints its own help and its own flags', () => {
+  const install = run(['install', '--help']);
+  assert.equal(install.code, 0);
+  assert.match(install.out, /funky-forge install - copy the method pack/);
+  assert.match(install.out, /--target/);
+  assert.doesNotMatch(install.out, /funky-forge check <phase>/);
+
+  const check = run(['check', '--help']);
+  assert.equal(check.code, 0);
+  assert.match(check.out, /funky-forge check - /);
+  assert.match(check.out, /--strict/);
+});
+
+test('install -h shows help instead of installing anything', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ff-cli-'));
+  const { code, out } = run(['install', '-h'], dir);
+  assert.equal(code, 0);
+  assert.match(out, /funky-forge install -/);
+  assert.equal(existsSync(join(dir, '.agents')), false);
+});
+
+test('an unknown short flag is refused instead of being read as a positional', () => {
+  const { code, err } = run(['install', '-x']);
+  assert.equal(code, 1);
+  assert.match(err, /UNKNOWN_FLAG/);
+  assert.match(err, /-x/);
 });

@@ -55,7 +55,7 @@ test('declares the artifact dependency chain', async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-test('--language sets internal artifacts and the proposal follows only when asked', async () => {
+test('--language also sets the proposal language unless it is overridden', async () => {
   const dir = await project();
   assert.equal(run(dir, { language: 'es' }).code, 0);
   for (const file of ['brief.md', 'design.md', 'estimate.md', 'assumptions.md']) {
@@ -64,7 +64,7 @@ test('--language sets internal artifacts and the proposal follows only when aske
   }
   const proposal = readDocument(await readFile(join(dir, '.funky-forge/proposal.md'), 'utf8'));
   assert.equal(proposal.data.language, 'es');
-  assert.equal(proposal.data.proposal_language, 'en');
+  assert.equal(proposal.data.proposal_language, 'es');
   await rm(dir, { recursive: true, force: true });
 });
 

@@ -42,7 +42,7 @@ export function init({ cwd = process.cwd(), flags = {}, stdout, stderr } = {}) {
   const out = (line) => (stdout ? stdout(line) : process.stdout.write(`${line}\n`));
   const err = (line) => (stderr ? stderr(line) : process.stderr.write(`${line}\n`));
   const language = typeof flags.language === 'string' ? flags.language : 'en';
-  const proposalLanguage = typeof flags['proposal-language'] === 'string' ? flags['proposal-language'] : 'en';
+  const proposalLanguage = typeof flags['proposal-language'] === 'string' ? flags['proposal-language'] : language;
 
   for (const [flag, value] of [['--language', language], ['--proposal-language', proposalLanguage]]) {
     if (!LANGUAGES.includes(value)) {

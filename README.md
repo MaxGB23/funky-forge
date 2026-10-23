@@ -67,7 +67,7 @@ pnpm remove --global funky-forge       # to unlink
 
 | Harness | Target | Flag |
 |---|---|---|
-| Pi, OpenCode, Codex, Antigravity CLI, etc. | `.agents/skills/funky-forge/` | `--target agents` |
+| Pi, OpenCode, Codex, Antigravity CLI... | `.agents/skills/funky-forge/` | `--target agents` |
 | Claude Code | `.claude/skills/funky-forge/` | `--target claude` |
 
 Detection is automatic: a `.claude/` directory means Claude, a shared marker (`.agents/skills/`,
@@ -89,6 +89,20 @@ funky-forge check problem --json       # bodyHash, errors, warnings
 
 The full loop for one phase lives in `skill/SKILL.md`: write the artifact, check it, delegate an
 independent reviewer, record `gates/<n>-<phase>.md`, check again, then ask the human.
+
+## Languages
+
+Three different things, and only two are configuration:
+
+| What | Set by | Default |
+|---|---|---|
+| The conversation with you | whatever language you write in | — |
+| Internal artifacts: brief, design, estimate, decisions, gate reports | `language`, set by `init --language` | `en` |
+| The client document, `proposal.md` | `proposal_language`, set by `init --proposal-language` | the `language` value |
+
+The chat language is not a flag: the skill answers in the language you use, whatever the artifacts
+say. `--language es --proposal-language en` is a real combination — plan in Spanish, send the
+proposal in English.
 
 ## Commands
 

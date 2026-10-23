@@ -22,6 +22,43 @@ Exit codes: 0 ok, 1 failure, 2 a decision that needs the human
 
 Install the method once per project, then follow the funky-forge skill.`;
 
+const COMMAND_DOCS = {
+  install: 'copy the method pack into a harness skill directory',
+  init: 'create .funky-forge/ from the shipped templates',
+  check: 'validate one phase: schema, dependencies, hashes, arithmetic, gates; read-only',
+  calc: 'recompute hours and price from the blocks in estimate.md',
+};
+
+const FLAG_DOCS = {
+  '--target': '<agents|claude>; detected when omitted',
+  '--dry-run': 'print the plan and write nothing',
+  '--with-pointer': 'append one marked line to AGENTS.md or CLAUDE.md',
+  '--force': 'overwrite files that differ from the shipped pack',
+  '--check': 'report divergence and write nothing',
+  '--json': 'one JSON object on stdout',
+  '--language': '<en|es> for internal artifacts',
+  '--proposal-language': '<en|es> for the client proposal only',
+  '--strict': 'treat warnings as errors',
+  '--write': 'rewrite the table between the calc markers',
+  '--help': 'show this help',
+};
+
+/**
+ * @param {string} command
+ * @returns {string}
+ */
+export function commandHelp(command) {
+  const spec = COMMANDS[command];
+  const synopsis = USAGE.split('\n').find((line) => line.trim().startsWith(`funky-forge ${command}`));
+  const lines = [`funky-forge ${command} - ${COMMAND_DOCS[command]}`, '', 'Usage:', synopsis ?? `  funky-forge ${command}`, '', 'Flags:'];
+  for (const [name, kind] of Object.entries(spec.flags)) {
+    const label = kind === 'value' ? `--${name} <value>` : `--${name}`;
+    lines.push(`  ${label.padEnd(26)} ${FLAG_DOCS[`--${name}`] ?? ''}`.trimEnd());
+  }
+  lines.push('', 'Exit codes: 0 ok, 1 failure, 2 a decision that needs the human');
+  return lines.join('\n');
+}
+
 const COMMANDS = {
   install: {
     flags: { target: 'value', 'dry-run': 'boolean', 'with-pointer': 'boolean', force: 'boolean', check: 'boolean', json: 'boolean', help: 'boolean' },
@@ -49,6 +86,11 @@ export function parseArgs(argv) {
   const positionals = [];
   for (let index = 0; index < rest.length; index += 1) {
     const token = rest[index];
+    if (token === '-h') {
+      flags.help = true;
+      continue;
+    }
+    if (token.startsWith('-') && !token.startsWith('--')) throw fail('UNKNOWN_FLAG', `unknown flag for ${command}: ${token}`);
     if (!token.startsWith('--')) {
       positionals.push(token);
       continue;
@@ -123,7 +165,7 @@ export function main(argv, io = {}) {
   try {
     const { command, positionals, flags } = parseArgs(argv);
     if (flags.help) {
-      stdout(USAGE);
+      stdout(commandHelp(command));
       return EXIT.OK;
     }
     return dispatch(command, positionals, flags, { stdout, stderr, cwd: io.cwd ?? process.cwd() });
