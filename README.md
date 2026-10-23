@@ -115,6 +115,36 @@ report.
 The reviewer still does the part no script can: judgement about scope, risk, and whether the price
 makes sense.
 
+## Harnesses and review quality
+
+The method needs three capabilities: read files, write files, run a shell command. Nothing else is
+required, and `check` plus `calc` behave identically everywhere.
+
+| Harness | Status | What changes |
+|---|---|---|
+| Pi with gentle-ai subagents | tested | Drafting and review run as separate agents; this is the path used for both validation projects and the local end-to-end test |
+| Pi without subagents | expected to work | Review falls back to a fresh session with the same brief |
+| Claude Code | expected to work | Subagents; install with `--target claude` |
+| OpenCode, Codex CLI | expected to work | Shared path; reviewers as separate sessions |
+| Any shell and editor | degraded | No independent reviewer: the CLI still enforces schemas, dependencies, hashes, arithmetic, coverage, and gate reports, but the review is manual |
+
+Two things do change with the harness. **Reviewer independence** sets the quality ceiling: a gate
+is only as strict as the reviewer, and a reviewer that shares the author's context tends to approve
+its own work. The tested setup ran the reviewer as a separate read-only agent against the phase
+brief, which is why it caught scope and pricing problems the deterministic checks cannot see.
+**Determinism does not change**: `check` and `calc` are the same in every harness.
+
+## How long a run takes
+
+Four gates, and each one ends with a human decision. A small project with light reviews takes one
+or two rounds per phase; a deep phase can take two or three, and the design phase is usually the
+long one. Your decisions set the pace: accepting a risk closes a round, asking for another revision
+opens one. The CLI itself is instant; the agent's time dominates.
+
+The method does not converge on its own. After two `BLOCK` rounds on the same phase, either accept
+the remaining findings as risks or reshape the scope, rather than reviewing the same objection a
+third time.
+
 ## Development
 
 ```sh

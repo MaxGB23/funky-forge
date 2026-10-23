@@ -134,6 +134,14 @@ An entry citing an id that is not a finding in the same report is `GATE_REPORT_M
 `verdict: BLOCK` is `BLOCK_VERDICT`. `not_verified` must be present even when it is empty.
 `funky-forge check <phase>` enforces all of this; `--strict` also turns its warnings into failures.
 
+## Convergence
+
+A phase cannot be reviewed forever. After two rounds that end in `BLOCK` on the same phase, the
+next decision belongs to the human: accept the remaining findings as risks (with an `accepted_risks`
+entry each) or stop and change the brief so the phase no longer has to solve that problem. A third
+round is allowed only when the second round's findings were fixed and the new findings are
+different in kind; it is never for re-wording the same objection.
+
 ## What `check` does not decide
 
 The CLI verifies shape, dependencies, hashes, arithmetic, coverage, price, and gate-reports. It
