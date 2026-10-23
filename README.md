@@ -24,6 +24,16 @@ funky-forge install                  # inside the project you want to plan
 funky-forge init
 ```
 
+With pnpm, install from the registry once published with `pnpm add --global funky-forge`. pnpm 12
+removed `pnpm link --global`, so the local-clone workflow uses the `link:` protocol instead:
+
+```sh
+git clone https://github.com/MaxGB23/funky-forge
+pnpm add --global link:./funky-forge   # symlinks the clone; edits show up immediately
+funky-forge --version
+pnpm remove --global funky-forge       # to unlink
+```
+
 `install` copies the method into the harness skill directory and writes nothing else:
 
 | Harness | Target | Flag |
@@ -108,8 +118,9 @@ makes sense.
 ## Development
 
 ```sh
-pnpm test              # node --test, no dependencies
-npm pack --dry-run     # inspect exactly what ships
+pnpm test                # node --test, no dependencies to install
+pnpm pack --dry-run      # or npm pack --dry-run: inspect exactly what ships
+node bin/funky-forge.js  # run the working tree without linking anything
 ```
 
 Layout: `bin/` entry point, `src/cli.js` dispatch, `src/commands/` one file per command,
