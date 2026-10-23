@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { isPhase, issue, validateApproval, validateFrontmatter } from '../lib/artifact.js';
 import { bodyHash, readDocument } from '../lib/frontmatter.js';
 import { componentPricingChecks, designCrossChecks, estimateCrossChecks, proposalCrossChecks } from '../lib/crosscheck.js';
+import { validateGateReport } from '../lib/gate.js';
 import { htmlCommentCount, placeholderTokens } from '../lib/markdown.js';
 import { artifactPath, assumptionsPath, gatePath, PHASES } from '../lib/paths.js';
 import { EXIT, formatHuman, formatJson } from '../lib/errors.js';
@@ -63,8 +64,13 @@ export function check({ cwd = process.cwd(), phase, flags = {}, stdout, stderr }
   errors.push(...dependencyErrors(cwd, phase));
   errors.push(...crossChecks({ cwd, phase, doc, errors, warnings }));
 
-  if (!existsSync(gatePath(phase, cwd))) {
+  const gate = gatePath(phase, cwd);
+  if (!existsSync(gate)) {
     errors.push(issue('GATE_REPORT_MISSING', `${gatePath(phase)} does not exist; record the review before advancing`, file));
+  } else {
+    const report = validateGateReport({ text: readFileSync(gate, 'utf8'), phase, file: gatePath(phase) });
+    errors.push(...report.errors);
+    warnings.push(...report.warnings);
   }
 
   const comments = htmlCommentCount(doc.body);

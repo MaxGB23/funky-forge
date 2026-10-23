@@ -27,11 +27,30 @@ ${extra}---
 ${body}`;
 }
 
+function gateReport(phase, { verdict = 'PASS', findings = 0, accepted = '[]', headings = '' } = {}) {
+  return `---
+phase: ${phase}
+verdict: ${verdict}
+depth: light
+escalation_reason: null
+reviewer: product
+date: 2026-10-01
+findings: ${findings}
+not_verified: []
+accepted_risks: ${accepted}
+---
+
+${headings}`;
+}
+
 async function project({ phase = 'problem', files = {}, gates = ['1-problem'] } = {}) {
   const dir = await mkdtemp(join(tmpdir(), 'ff-check-'));
   await mkdir(join(dir, '.funky-forge/gates'), { recursive: true });
   await writeFile(join(dir, '.funky-forge/brief.md'), files.brief ?? artifact('problem'), 'utf8');
-  for (const gate of gates) await writeFile(join(dir, '.funky-forge/gates', `${gate}.md`), '# gate\n', 'utf8');
+  for (const gate of gates) {
+    const name = gate.split('-').slice(1).join('-');
+    await writeFile(join(dir, '.funky-forge/gates', `${gate}.md`), gateReport(name), 'utf8');
+  }
   for (const [name, content] of Object.entries(files)) {
     if (name === 'brief') continue;
     await writeFile(join(dir, '.funky-forge', `${name}.md`), content, 'utf8');
