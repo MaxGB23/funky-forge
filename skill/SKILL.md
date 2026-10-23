@@ -66,8 +66,7 @@ One path, variable depth: every project runs the same four phases.
 4. Run `funky-forge check <phase>`. Fix and repeat until it passes.
 5. Choose depth from the defaults and the triggers in `references/revision.md`.
 6. Delegate the reviewer with its brief. The reviewer returns a verdict and findings.
-7. Record `gates/<n>-<phase>.md`: verdict, depth, escalation reason, verbatim findings,
-   `not_verified`, and `accepted_risks` if the human accepts any.
+7. Record `gates/<n>-<phase>.md`: verdict, depth, escalation reason, verbatim findings, `not_verified`, and `accepted_risks` if the human accepts any. One `### F<id> - Severity: <level>` heading per finding, with the decision inside that block; prefix the id with the round (`R3-F1`) when the phase is reviewed again.
 8. Run `funky-forge check <phase>` again. It must pass with the report on disk.
 9. Present the findings and the decision to the human.
 10. On approval: copy `bodyHash` from `check --json` into `approved_hash`, set `status`,

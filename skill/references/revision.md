@@ -100,7 +100,7 @@ accepted_risks: []
 ---
 ```
 
-Findings are the reviewer's verbatim output. Each one starts with a heading `check` can parse:
+Findings are the reviewer's verbatim output. Each one starts with a level-three heading `check` can parse:
 
 ```markdown
 ### F1 - Severity: high
@@ -110,16 +110,29 @@ Findings are the reviewer's verbatim output. Each one starts with a heading `che
 - Decision: accepted by <human> on 2026-10-22 / fixed in a later revision
 ```
 
+One heading per finding, with the decision inside that block. Deeper headings (`####`) are notes,
+not findings: `check` counts level-three headings only, and `findings` in the frontmatter must equal
+that count. A finding heading that does not parse is `GATE_REPORT_MALFORMED`.
+
+When a phase is reviewed more than once, prefix the id with the round: `### R3-F1 - Severity: high`.
+A bare `F1` means round 1. Prefixing keeps a round-3 finding from being confused with a round-1
+finding of the same number, and `accepted_risks` must cite exactly the id the heading declares.
+
 An accepted risk adds an entry to `accepted_risks`, and a paragraph to `decisions.md`:
 
 ```yaml
 accepted_risks:
-  - finding: F1
+  - finding: R3-F1
     severity: high
     reason: "..."
     accepted_by: "<human>"
     date: 2026-10-22
 ```
+
+An entry citing an id that is not a finding in the same report is `GATE_REPORT_MALFORMED`; under
+`PASS_WITH_RISKS`, every `blocker` and `high` finding without an entry is `RISK_NOT_ACCEPTED`, and
+`verdict: BLOCK` is `BLOCK_VERDICT`. `not_verified` must be present even when it is empty.
+`funky-forge check <phase>` enforces all of this; `--strict` also turns its warnings into failures.
 
 ## Fallback
 
