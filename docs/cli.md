@@ -107,6 +107,13 @@ compromised release to be caught, short enough that security patches land in tim
 supports `minimumReleaseAgeExclude` for the rare package that needs an immediate update. npm works
 too; it has no built-in equivalent to that setting.
 
+This is a practice we promote, not a requirement of this package. Installing `funky-forge` with npm
+is equally safe, because nothing it installs comes from a third party. The pin still earns its place
+in the repository: it protects the machine that clones and builds the project, it covers the
+toolchain, and it is already in force the moment a first dependency appears. Adopting it before the
+need is cheaper than remembering it under deadline, and a policy that has never blocked a build is
+easier to keep.
+
 ## Next
 
 - File formats the commands read: [artifacts.md](artifacts.md)

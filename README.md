@@ -29,8 +29,12 @@ covered by tests and has no runtime dependencies.
 
 ## Requirements
 
-Node.js 20.11 or newer. No dependencies, no build step, no network access. pnpm is recommended for
-the supply-chain reason described in [docs/cli.md](docs/cli.md#package-manager); npm works too.
+Node.js 20.11 or newer. No dependencies, no build step, no network access. npm works; pnpm is
+recommended because we promote one practice whether or not this package needs it:
+`minimumReleaseAge`, which refuses a version until it has been public for a while. Nothing here
+ships dependencies, so the pin protects the machine that clones and builds the repository, not the
+consumer. Why it is recommended anyway, and how to tune it:
+[docs/cli.md](docs/cli.md#package-manager).
 
 ## Install
 
