@@ -68,6 +68,8 @@ function plan(cwd, skillsDir) {
 export function install({ cwd = process.cwd(), flags = {}, stdout, stderr } = {}) {
   const out = (line) => (stdout ? stdout(line) : process.stdout.write(`${line}\n`));
   const err = (line) => (stderr ? stderr(line) : process.stderr.write(`${line}\n`));
+  // `--json` owns stdout: a caller parses stdout, so progress notices belong on stderr.
+  const notice = (line) => (flags.json ? err(line) : out(line));
   const explicit = typeof flags.target === 'string' ? flags.target : null;
 
   let target = explicit;
@@ -79,7 +81,7 @@ export function install({ cwd = process.cwd(), flags = {}, stdout, stderr } = {}
   if (target === null) {
     const detected = detectTargets(cwd);
     if (detected.length > 1) {
-      out(`Detected: ${detected.map((entry) => `${TARGETS[entry.target].label} (${entry.markers.join(', ')})`).join(', ')}`);
+      notice(`Detected: ${detected.map((entry) => `${TARGETS[entry.target].label} (${entry.markers.join(', ')})`).join(', ')}`);
       err('TARGET_AMBIGUOUS: both harness markers exist (exit 2).');
       err('  Re-run with one of:');
       err('    funky-forge install --target agents');
@@ -88,10 +90,10 @@ export function install({ cwd = process.cwd(), flags = {}, stdout, stderr } = {}
     }
     if (detected.length === 1) {
       target = detected[0].target;
-      out(`Detected: ${TARGETS[target].label} (${detected[0].markers.join(', ')})`);
+      notice(`Detected: ${TARGETS[target].label} (${detected[0].markers.join(', ')})`);
     } else {
       target = 'agents';
-      out('No harness marker found: using the shared default (.agents/skills).');
+      notice('No harness marker found: using the shared default (.agents/skills).');
     }
   }
 

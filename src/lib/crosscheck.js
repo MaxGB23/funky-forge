@@ -4,7 +4,7 @@
  * a project that follows the templates cannot fail by authoring style.
  */
 
-import { computeEstimate, money, readEstimateData, renderTable, validateEstimate } from './estimate.js';
+import { computeEstimate, money, readEstimateData, renderTable, TOLERANCE, validateEstimate } from './estimate.js';
 import { listItems, section, sections, tableRows } from './markdown.js';
 
 const COMPONENT_MARKUP = /^(?:\*\*(.+?)\*\*|`([^`]+)`)/;
@@ -91,9 +91,22 @@ export function designCrossChecks({ designBody }) {
   const nfr = findSection(designBody, /^nfr/i);
   const nfrRows = nfr ? Math.max(0, tableRows(nfr.content).length - 1) : 0;
   if (nfrRows < 3) {
-    warnings.push({ code: 'NFR_INCOMPLETE', message: `the NFR section needs at least three decisions in its table, found ${nfrRows}` });
+    errors.push({ code: 'NFR_INCOMPLETE', message: `the NFR section needs at least three decisions in its table, found ${nfrRows}` });
   }
   return { errors, warnings };
+}
+
+/**
+ * The table renders hours at one decimal, so a cell is compared against the rendered value: the
+ * rounding the writer already owns is not a mismatch, anything wider than TOLERANCE is.
+ * @param {unknown} cell
+ * @param {number} expected
+ * @returns {boolean}
+ */
+function matchesRenderedHours(cell, expected) {
+  const shown = Number(cell);
+  if (!Number.isFinite(shown)) return false;
+  return Math.abs(shown - Number(expected.toFixed(1))) <= TOLERANCE;
 }
 
 /**
@@ -116,8 +129,7 @@ export function arithmeticChecks({ estimateBody, estimate }) {
       errors.push({ code: 'ARITHMETIC_MISMATCH', message: `the generated table has no row for "${block.name}"` });
       continue;
     }
-    const expected = Number(row[4]);
-    if (!Number.isFinite(expected) || Math.abs(expected - block.expected) > 0.05) {
+    if (!matchesRenderedHours(row[4], block.expected)) {
       errors.push({ code: 'ARITHMETIC_MISMATCH', message: `"${block.name}" shows ${row[4]} expected hours but the blocks compute ${block.expected.toFixed(1)}` });
     }
   }
@@ -125,8 +137,8 @@ export function arithmeticChecks({ estimateBody, estimate }) {
   if (!totalRow) {
     errors.push({ code: 'ARITHMETIC_MISMATCH', message: 'the generated table has no total row' });
   } else {
-    const total = Number(String(totalRow[4]).replace(/\*/g, ''));
-    if (!Number.isFinite(total) || Math.abs(total - estimate.totals.expected) > 0.05) {
+    const total = String(totalRow[4]).replace(/\*/g, '');
+    if (!matchesRenderedHours(total, estimate.totals.expected)) {
       errors.push({ code: 'ARITHMETIC_MISMATCH', message: `the table totals ${totalRow[4]} but the blocks compute ${estimate.totals.expected.toFixed(1)}` });
     }
   }
@@ -196,11 +208,13 @@ export function proposalCrossChecks({ proposalBody, estimate }) {
 
 /**
  * Every design component must be named in the estimate, and a component named only under an
- * optional heading is a pricing decision the human must confirm rather than a detail.
+ * optional heading is a pricing decision the human must confirm rather than a detail; a component
+ * the estimate never names at all means the price is missing scope.
  * @param {{designBody: string, estimateBody: string}} input
- * @returns {{warnings: {code: string, message: string}[]}}
+ * @returns {{errors: {code: string, message: string}[], warnings: {code: string, message: string}[]}}
  */
 export function componentPricingChecks({ designBody, estimateBody }) {
+  const errors = [];
   const warnings = [];
   const lower = estimateBody.toLowerCase();
   const optionalSections = sections(estimateBody).filter((entry) => OPTIONAL_HEADING.test(entry.title));
@@ -208,7 +222,7 @@ export function componentPricingChecks({ designBody, estimateBody }) {
     const token = name.toLowerCase();
     const total = lower.split(token).length - 1;
     if (total === 0) {
-      warnings.push({ code: 'COMPONENT_NOT_ESTIMATED', message: `design component "${name}" is not named in the estimate; price it or say why not` });
+      errors.push({ code: 'COMPONENT_NOT_ESTIMATED', message: `design component "${name}" is not named in the estimate; price it or say why not` });
       continue;
     }
     const inOptional = optionalSections.reduce((sum, entry) => sum + (entry.content.toLowerCase().split(token).length - 1), 0);
@@ -216,7 +230,7 @@ export function componentPricingChecks({ designBody, estimateBody }) {
       warnings.push({ code: 'COMPONENT_ONLY_OPTIONAL', message: `design component "${name}" appears only under an optional heading in the estimate; confirm the base price does not depend on it` });
     }
   }
-  return { warnings };
+  return { errors, warnings };
 }
 
 export { renderTable };

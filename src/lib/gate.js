@@ -66,6 +66,21 @@ export function validateGateReport({ text, phase, file }) {
   if (data.phase !== phase) errors.push(issue('GATE_REPORT_MALFORMED', `${file}: phase is ${JSON.stringify(data.phase ?? null)} but the artifact is ${phase}`, file));
   if (!VERDICTS.includes(String(data.verdict))) errors.push(issue('GATE_REPORT_MALFORMED', `${file}: verdict must be one of ${VERDICTS.join(', ')}`, file));
   if (!DEPTHS.includes(String(data.depth))) errors.push(issue('GATE_REPORT_MALFORMED', `${file}: depth must be light or deep`, file));
+  if (!Object.hasOwn(data, 'escalation_reason')) {
+    errors.push(issue('GATE_REPORT_MALFORMED', `${file}: escalation_reason must be present, even when it is null`, file));
+  } else if (data.depth === 'light') {
+    const trigger = findings.find((finding) => finding.severity === 'blocker' || finding.severity === 'high');
+    const reason = typeof data.escalation_reason === 'string' ? data.escalation_reason.trim() : '';
+    if (trigger && reason === '') {
+      errors.push(
+        issue(
+          'GATE_REPORT_MALFORMED',
+          `${file}: light review contains ${trigger.id} (${trigger.severity}); an escalated light review must say why in escalation_reason`,
+          file,
+        ),
+      );
+    }
+  }
   if (typeof data.reviewer !== 'string' || data.reviewer.trim() === '') errors.push(issue('GATE_REPORT_MALFORMED', `${file}: reviewer is required`, file));
   if (typeof data.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(data.date)) errors.push(issue('GATE_REPORT_MALFORMED', `${file}: date must be YYYY-MM-DD`, file));
   if (!Array.isArray(data.not_verified)) errors.push(issue('GATE_REPORT_MALFORMED', `${file}: not_verified must be a list, even when empty`, file));

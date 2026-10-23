@@ -152,3 +152,26 @@ test('without --with-pointer no user-owned file is written', async () => {
   assert.equal(existsSync(join(dir, 'CLAUDE.md')), false);
   await rm(dir, { recursive: true, force: true });
 });
+
+test('--json prints only the JSON object on stdout', async () => {
+  const dir = await project();
+  const result = run(dir, { json: true });
+  assert.equal(result.code, 0);
+  const payload = JSON.parse(result.out);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.target, 'agents');
+  assert.equal(payload.destination, '.agents/skills/funky-forge');
+  assert.match(result.err, /No harness marker found/);
+  await rm(dir, { recursive: true, force: true });
+
+  const claude = await project();
+  await mkdir(join(claude, '.claude'), { recursive: true });
+  const detected = run(claude, { json: true });
+  assert.equal(detected.code, 0);
+  const detectedPayload = JSON.parse(detected.out);
+  assert.equal(detectedPayload.ok, true);
+  assert.equal(detectedPayload.target, 'claude');
+  assert.equal(detectedPayload.destination, '.claude/skills/funky-forge');
+  assert.match(detected.err, /Detected: Claude Code/);
+  await rm(claude, { recursive: true, force: true });
+});

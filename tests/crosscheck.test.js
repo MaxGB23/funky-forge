@@ -72,11 +72,11 @@ test('coverage naming an undeclared component is UNDEFINED_COMPONENT', () => {
   assert.match(result.errors[0].message, /Ghost/);
 });
 
-test('a short NFR table is a warning, not an error', () => {
+test('a short NFR table is an error, not a warning', () => {
   const body = DESIGN.replace('| Availability | single instance |\n', '');
   const result = designCrossChecks({ designBody: body });
-  assert.deepEqual(result.errors, []);
-  assert.deepEqual(result.warnings.map((warning) => warning.code), ['NFR_INCOMPLETE']);
+  assert.deepEqual(result.errors.map((error) => error.code), ['NFR_INCOMPLETE']);
+  assert.deepEqual(result.warnings, []);
 });
 
 test('component names come from marked-up list items only', () => {
@@ -109,10 +109,28 @@ test('a proposal quoting the estimate price passes, another figure fails', () =>
   assert.match(mismatch[0].message, /5,429/);
 });
 
-test('a component absent from the estimate is flagged', () => {
+test('a component absent from the estimate is an error', () => {
   const result = componentPricingChecks({ designBody: DESIGN, estimateBody: 'the catalogue only\n' });
-  assert.deepEqual(result.warnings.map((warning) => warning.code), ['COMPONENT_NOT_ESTIMATED']);
-  assert.match(result.warnings[0].message, /Ledger/);
+  assert.deepEqual(result.errors.map((error) => error.code), ['COMPONENT_NOT_ESTIMATED']);
+  assert.match(result.errors[0].message, /Ledger/);
+  assert.deepEqual(result.warnings, []);
+});
+
+test('a cell more than TOLERANCE away from the rendered hours is a mismatch', () => {
+  const estimate = computeEstimate({
+    blocks: [{ id: 'discovery', name: 'Discovery', optimistic: 16, likely: 24, pessimistic: 40 }],
+    pricing: { contingency: 0.2, margin: 0.3, tco_monthly: 30 },
+    rate: 40,
+    currency: 'USD',
+  });
+  const body = `<!-- calc:start -->\n${renderTable(estimate)}\n<!-- calc:end -->\n`;
+  assert.deepEqual(arithmeticChecks({ estimateBody: body, estimate }), []);
+
+  // 25.333.. renders as 25.3; 25.35 is 0.05 away, which the 0.01 tolerance rejects.
+  const drifted = body.replace('| Discovery | 16 | 24 | 40 | 25.3 |', '| Discovery | 16 | 24 | 40 | 25.35 |');
+  const errors = arithmeticChecks({ estimateBody: drifted, estimate });
+  assert.deepEqual(errors.map((error) => error.code), ['ARITHMETIC_MISMATCH']);
+  assert.match(errors[0].message, /25\.35/);
 });
 
 test('a component named only under an optional heading is flagged', () => {

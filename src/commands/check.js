@@ -11,6 +11,7 @@ import { componentPricingChecks, designCrossChecks, estimateCrossChecks, proposa
 import { validateGateReport } from '../lib/gate.js';
 import { htmlCommentCount, placeholderTokens } from '../lib/markdown.js';
 import { artifactPath, assumptionsPath, gatePath, PHASES } from '../lib/paths.js';
+import { requiredSectionChecks } from '../lib/required.js';
 import { EXIT, formatHuman, formatJson } from '../lib/errors.js';
 
 /**
@@ -61,6 +62,8 @@ export function check({ cwd = process.cwd(), phase, flags = {}, stdout, stderr }
     errors.push(issue('PLACEHOLDER_FOUND', `placeholder ${token} is still in the body`, file));
   }
 
+  errors.push(...requiredSectionChecks({ phase, body: doc.body, file }));
+
   errors.push(...dependencyErrors(cwd, phase));
   errors.push(...crossChecks({ cwd, phase, doc, errors, warnings }));
 
@@ -101,7 +104,11 @@ function crossChecks({ cwd, phase, doc, warnings }) {
     const result = estimateCrossChecks({ estimateDoc: doc, assumptionsData: assumptions?.data ?? {} });
     warnings.push(...(result.warnings ?? []));
     const designDoc = readOptional(cwd, artifactPath('design', cwd));
-    if (designDoc) warnings.push(...(componentPricingChecks({ designBody: designDoc.body, estimateBody: doc.body }).warnings ?? []));
+    if (designDoc) {
+      const pricing = componentPricingChecks({ designBody: designDoc.body, estimateBody: doc.body });
+      warnings.push(...(pricing.warnings ?? []));
+      return [...result.errors, ...(pricing.errors ?? [])];
+    }
     return result.errors;
   }
   if (phase === 'proposal') {

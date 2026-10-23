@@ -102,3 +102,26 @@ test('a level-three heading that is not a finding is malformed', () => {
   const result = validate(report({ headings: '### Notes\n' }));
   assert.ok(result.errors.some((error) => /finding heading/.test(error.message)));
 });
+
+test('escalation_reason must be present even when it is null', () => {
+  const text = report().replace('escalation_reason: null\n', '');
+  const result = validate(text);
+  assert.deepEqual(result.errors.map((error) => error.code), ['GATE_REPORT_MALFORMED']);
+  assert.match(result.errors[0].message, /escalation_reason/);
+});
+
+test('a light review with a high finding must state why it escalated', () => {
+  const headings = '### F1 - Severity: high - Money\n';
+  const accepted = `  - finding: R1-F1\n    severity: high\n    reason: accepted for launch\n    accepted_by: the client\n    date: 2026-10-02\n`;
+  const silent = validate(report({ depth: 'light', verdict: 'PASS_WITH_RISKS', findings: 1, headings, accepted }));
+  assert.deepEqual(silent.errors.map((error) => error.code), ['GATE_REPORT_MALFORMED']);
+  assert.match(silent.errors[0].message, /R1-F1/);
+
+  const escalated = validate(
+    report({ depth: 'light', verdict: 'PASS_WITH_RISKS', findings: 1, headings, accepted }).replace(
+      'escalation_reason: null',
+      'escalation_reason: "the light pass returned a high finding"',
+    ),
+  );
+  assert.deepEqual(escalated.errors, []);
+});

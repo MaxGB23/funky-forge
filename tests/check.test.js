@@ -9,7 +9,111 @@ import { bodyHash, readDocument } from '../src/lib/frontmatter.js';
 
 const DEPENDS = { problem: [], design: ['problem'], estimate: ['problem', 'design'], proposal: ['problem', 'design', 'estimate'] };
 
-function artifact(phase, { status = 'draft', extra = '', approvedHash = 'null', approvedBy = 'null', approvedAt = 'null', body = 'Real content, no placeholders.\n' } = {}) {
+const PHASE_BODY = {
+  problem: `## One-line summary
+
+A shared-equipment checkout record.
+
+## Problem today
+
+The record lives in a spreadsheet and a chat channel.
+
+## Users and volume
+
+Forty members read it and two maintainers write it.
+
+## Core flow
+
+A member requests an item and a maintainer records the handover.
+
+## Must-haves
+
+- One catalogue with a unique identifier per item.
+
+## Out of scope
+
+- Tracking hardware.
+
+## Success metric
+
+Zero mismatches at the 90-day audit.
+
+## Deadline and constraints
+
+Three weeks at USD 35 per hour.
+
+## Current cost of the problem
+
+unknown.
+`,
+  design: `## Architecture at a glance
+
+One server-rendered application over one database.
+
+## Components and responsibilities
+
+- **Catalogue** — owns the register.
+- **Ledger** — owns the checkouts.
+
+## Must-have coverage
+
+| # | Must-have | Component |
+|---|---|---|
+| 1 | one identifier per item | Catalogue |
+| 2 | one open holder per item | Ledger |
+
+## Data model and retention
+
+Two tables; nothing is deleted.
+
+## Auth and permissions
+
+Two roles behind one guard.
+
+## Integrations
+
+None.
+
+## NFR decisions
+
+| NFR | Applies | How it is met |
+|---|---|---|
+| Performance | yes | indexed queries |
+| Availability | yes | nightly backup |
+| Security | yes | one role guard |
+
+## Risks and mitigations
+
+| Risk | Mitigation |
+|---|---|
+| A stale record | the return docket |
+
+## Rejected alternatives
+
+- NotificationService - rejected because notifications are out of scope.
+
+## Stack decision
+
+PostgreSQL; the language is deferred.
+
+## Open decisions
+
+- D1 — the host provider. Owner: the client.
+`,
+  estimate: `## Work blocks
+
+The blocks are listed in the generated table below.
+
+## Pricing
+
+Pricing follows the assumptions file.
+`,
+  proposal: `## Price and payment milestones
+
+Real content, no placeholders.\n`,
+};
+
+function artifact(phase, { status = 'draft', extra = '', approvedHash = 'null', approvedBy = 'null', approvedAt = 'null', body = PHASE_BODY[phase] } = {}) {
   return `---
 schema: 1
 phase: ${phase}
@@ -173,7 +277,7 @@ test('a missing gate report fails with GATE_REPORT_MISSING', async () => {
 
 test('leftover template comments warn, and --strict turns them into a failure', async () => {
   const { dir } = await project();
-  await writeFile(join(dir, '.funky-forge/brief.md'), artifact('problem', { body: '<!-- hint -->\nReal content.\n' }), 'utf8');
+  await writeFile(join(dir, '.funky-forge/brief.md'), artifact('problem', { body: `<!-- hint -->\n${PHASE_BODY.problem}` }), 'utf8');
   const lenient = run(dir, 'problem');
   assert.equal(lenient.code, 0);
   assert.match(lenient.out, /TEMPLATE_COMMENT/);
