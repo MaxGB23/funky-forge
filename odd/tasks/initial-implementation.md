@@ -105,4 +105,4 @@ total. Behavior slices stay near or below 400 authored lines.
 | T3 | `bc269c4` | 3 reviewer briefs (46-60 lines), 2 schemas, 6 templates |
 | T4 | `4409477` | Project A validated end-to-end with 6 independent reviews; evidence in `docs/validation/project-a.md` |
 | T5 | — | pending |
-| T5 | — | Project B validated end-to-end (7 reviews, 3 design rounds); evidence in `docs/validation/project-b.md` |
+| T5 | `83cfb41` | Project B validated end-to-end (7 reviews, 3 design rounds); evidence in `docs/validation/project-b.md` |
