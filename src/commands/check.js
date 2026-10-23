@@ -7,8 +7,9 @@ import { existsSync, readFileSync } from 'node:fs';
 
 import { isPhase, issue, validateApproval, validateFrontmatter } from '../lib/artifact.js';
 import { bodyHash, readDocument } from '../lib/frontmatter.js';
+import { componentPricingChecks, designCrossChecks, estimateCrossChecks, proposalCrossChecks } from '../lib/crosscheck.js';
 import { htmlCommentCount, placeholderTokens } from '../lib/markdown.js';
-import { artifactPath, gatePath, PHASES } from '../lib/paths.js';
+import { artifactPath, assumptionsPath, gatePath, PHASES } from '../lib/paths.js';
 import { EXIT, formatHuman, formatJson } from '../lib/errors.js';
 
 /**
@@ -60,6 +61,7 @@ export function check({ cwd = process.cwd(), phase, flags = {}, stdout, stderr }
   }
 
   errors.push(...dependencyErrors(cwd, phase));
+  errors.push(...crossChecks({ cwd, phase, doc, errors, warnings }));
 
   if (!existsSync(gatePath(phase, cwd))) {
     errors.push(issue('GATE_REPORT_MISSING', `${gatePath(phase)} does not exist; record the review before advancing`, file));
@@ -75,6 +77,52 @@ export function check({ cwd = process.cwd(), phase, flags = {}, stdout, stderr }
   }
 
   return finish({ flags, phase, hash, errors, warnings, out });
+}
+
+/**
+ * Cross-artifact rules for the phase being checked.
+ * @param {{cwd: string, phase: string, doc: {body: string}, errors: {code: string, message: string}[], warnings: {code: string, message: string}[]}} input
+ * @returns {{code: string, message: string}[]}
+ */
+function crossChecks({ cwd, phase, doc, warnings }) {
+  if (phase === 'design') {
+    const result = designCrossChecks({ designBody: doc.body });
+    warnings.push(...(result.warnings ?? []));
+    return result.errors;
+  }
+  if (phase === 'estimate') {
+    const assumptions = readOptional(cwd, assumptionsPath(cwd));
+    const result = estimateCrossChecks({ estimateDoc: doc, assumptionsData: assumptions?.data ?? {} });
+    warnings.push(...(result.warnings ?? []));
+    const designDoc = readOptional(cwd, artifactPath('design', cwd));
+    if (designDoc) warnings.push(...(componentPricingChecks({ designBody: designDoc.body, estimateBody: doc.body }).warnings ?? []));
+    return result.errors;
+  }
+  if (phase === 'proposal') {
+    const assumptions = readOptional(cwd, assumptionsPath(cwd));
+    const estimateDoc = readOptional(cwd, artifactPath('estimate', cwd));
+    if (!estimateDoc) return [];
+    const estimateResult = estimateCrossChecks({ estimateDoc, assumptionsData: assumptions?.data ?? {} });
+    if (!estimateResult.estimate) return [];
+    const result = proposalCrossChecks({ proposalBody: doc.body, estimate: estimateResult.estimate });
+    warnings.push(...(result.warnings ?? []));
+    return result.errors;
+  }
+  return [];
+}
+
+/**
+ * @param {string} cwd
+ * @param {string} path
+ * @returns {{data: Record<string, unknown>, body: string} | null}
+ */
+function readOptional(cwd, path) {
+  if (!existsSync(path)) return null;
+  try {
+    return readDocument(readFileSync(path, 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 /**

@@ -151,6 +151,9 @@ export function placeholderTokens(body) {
  */
 export function htmlCommentCount(body) {
   const { lines, inFence } = scanFences(body);
-  const text = lines.filter((line, index) => !inFence[index]).join('\n');
+  const text = lines
+    .filter((line, index) => !inFence[index])
+    .join('\n')
+    .replace(/<!--\s*calc:(?:start|end)\s*-->/g, '');
   return (text.match(/<!--/g) ?? []).length;
 }
