@@ -106,3 +106,4 @@ total. Behavior slices stay near or below 400 authored lines.
 | T4 | `4409477` | Project A validated end-to-end with 6 independent reviews; evidence in `docs/validation/project-a.md` |
 | T5 | — | pending |
 | T5 | `83cfb41` | Project B validated end-to-end (7 reviews, 3 design rounds); evidence in `docs/validation/project-b.md` |
+| T6 | `b4ac65f`, `a5aa063` | YAML subset parser, frontmatter, body hash (8/8 real approvals reproduced), markdown helpers, paths, error codes, dispatch; 40 tests |
