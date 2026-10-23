@@ -3,6 +3,7 @@
  * step fail with NOT_IMPLEMENTED instead of pretending to work.
  */
 
+import { install } from './commands/install.js';
 import { CliError, EXIT, fail } from './lib/errors.js';
 
 export const USAGE = `funky-forge - plan and quote software projects in four gated phases
@@ -79,9 +80,11 @@ export function flagValue(flags, name) {
  * @param {string} command
  * @param {string[]} positionals
  * @param {Record<string, string | boolean>} flags
+ * @param {{stdout: (line: string) => void, stderr: (line: string) => void, cwd: string}} io
  * @returns {number}
  */
-function dispatch(command, positionals, flags) {
+function dispatch(command, positionals, flags, io) {
+  if (command === 'install') return install({ cwd: io.cwd, flags, stdout: io.stdout, stderr: io.stderr });
   if (command === 'check' && positionals.length === 0) {
     throw fail('PHASE_REQUIRED', 'check needs a phase: problem, design, estimate, or proposal');
   }
@@ -117,7 +120,7 @@ export function main(argv, io = {}) {
       stdout(USAGE);
       return EXIT.OK;
     }
-    return dispatch(command, positionals, flags);
+    return dispatch(command, positionals, flags, { stdout, stderr, cwd: io.cwd ?? process.cwd() });
   } catch (error) {
     if (error instanceof CliError) {
       stderr(`${error.code}: ${error.message}`);

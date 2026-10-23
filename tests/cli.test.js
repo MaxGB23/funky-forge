@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { main, USAGE } from '../src/cli.js';
 
-function run(argv) {
+function run(argv, cwd = mkdtempSync(join(tmpdir(), 'ff-cli-'))) {
   const out = [];
   const err = [];
   const code = main(argv, {
@@ -11,7 +15,7 @@ function run(argv) {
 `),
     stderr: (line) => err.push(`${line}
 `),
-    cwd: process.cwd(),
+    cwd,
   });
   return { code, out: out.join(''), err: err.join('') };
 }
@@ -36,9 +40,9 @@ test('an unknown command fails with usage on stderr', () => {
 });
 
 test('every documented command is routed, not rejected as unknown', () => {
+  const phases = { check: ['design'] };
   for (const command of ['install', 'init', 'check', 'calc']) {
-    const { code, err } = run([command]);
-    assert.equal(code, 1, command);
+    const { err } = run([command, ...(phases[command] ?? [])]);
     assert.doesNotMatch(err, /unknown command/, command);
   }
 });
