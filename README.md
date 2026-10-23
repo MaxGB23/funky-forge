@@ -32,6 +32,16 @@ Set the same key in your global pnpm config to get that delay in every project. 
 from a content-addressed store and keeps `node_modules` non-flat, which makes a package that starts
 running at install time visible instead of hidden in a nested tree.
 
+Two honest caveats about the number. First, this setting protects the machine that installs, not the
+people who install your package: a consumer is protected by their own configuration, so a repository
+pin is about your development and CI environment. Second, seven days is deliberately conservative
+and would normally be too slow, because it also delays the version that fixes a known vulnerability.
+It is cheap here only because this package has no dependencies at all, so the delay applies to
+tooling, never to what ships. For projects with real dependency trees, one to three days is the
+better trade: long enough for a compromised release to be caught, short enough that security patches
+land while they still matter. pnpm supports `minimumReleaseAgeExclude` for the rare package that
+needs an immediate update.
+
 npm works too — the package has no dependencies, so nothing is installed either way — but it has no
 built-in equivalent to `minimumReleaseAge`. That is the only reason pnpm comes first here.
 
