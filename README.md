@@ -134,6 +134,28 @@ its own work. The tested setup ran the reviewer as a separate read-only agent ag
 brief, which is why it caught scope and pricing problems the deterministic checks cannot see.
 **Determinism does not change**: `check` and `calc` are the same in every harness.
 
+## Model selection is yours
+
+The method never names a model or a provider. The orchestrator and each reviewer run on whatever
+your platform is configured to use — Claude Code, OpenCode, Antigravity CLI, Pi, or anything else
+with file access and a shell — so the configuration you choose, not this repository, decides how
+good a run gets. Two runs of the same project on different configurations can reach different
+verdicts, so when you compare results, record the configuration next to them.
+
+| Role | What it does | Where model quality pays |
+|---|---|---|
+| Orchestrator | Talks to you, writes the four artifacts, runs `check` and `calc`, chooses depth, records gates, presents every decision | Coherence across four documents that must agree with each other |
+| Reviewer (subagent) | Reads the artifacts and one phase brief, returns a verdict and findings | The independent judgement nothing else provides: scope, risk, whether the price makes sense |
+
+**If you can only afford one strong reasoning model, put it on the reviewer.** The CLI covers the
+mechanical half, so a weak orchestrator fails loudly in `check`; a weak reviewer fails silently by
+approving work that should not pass, and no later step catches it. The next best place is the
+`design` and `estimate` reviews, where reversibility and money live; `problem` and `proposal`
+reviews are light and tolerate a cheaper model better.
+
+If both roles run on the same model, keep them in separate sessions anyway: shared context is
+exactly what makes a reviewer agree with its author.
+
 ## How long a run takes
 
 Four gates, and each one ends with a human decision. A small project with light reviews takes one
