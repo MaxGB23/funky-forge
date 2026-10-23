@@ -5,7 +5,14 @@ import { existsSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { main, USAGE } from '../src/cli.js';
+import { main, USAGE, helpProblems } from '../src/cli.js';
+
+const COMMANDS_FOR_TEST = {
+  install: ['target', 'dry-run', 'with-pointer', 'force', 'check', 'json', 'help'],
+  init: ['language', 'proposal-language', 'force', 'json', 'help'],
+  check: ['json', 'strict', 'help'],
+  calc: ['write', 'json', 'help'],
+};
 
 function run(argv, cwd = mkdtempSync(join(tmpdir(), 'ff-cli-'))) {
   const out = [];
@@ -105,4 +112,29 @@ test('an unknown short flag is refused instead of being read as a positional', (
   assert.equal(code, 1);
   assert.match(err, /UNKNOWN_FLAG/);
   assert.match(err, /-x/);
+});
+
+test('the help text cannot drift from the parser', () => {
+  assert.deepEqual(helpProblems(), []);
+});
+
+test('USAGE lists every command and marks optional flags as optional', () => {
+  const lines = USAGE.split('\n');
+  for (const command of ['install', 'init', 'check', 'calc']) {
+    assert.ok(lines.some((line) => line.trim().startsWith(`funky-forge ${command} `)), command);
+  }
+  assert.ok(USAGE.includes('[--target <agents|claude>]'));
+  assert.ok(USAGE.includes('check <phase>'));
+  assert.ok(!USAGE.includes('[<phase>]'));
+});
+
+test('every declared flag appears in its own command help', () => {
+  for (const [command, names] of Object.entries(COMMANDS_FOR_TEST)) {
+    const { out } = run([command, '--help']);
+    for (const name of names) assert.ok(out.includes(`--${name}`), `${command} --${name}`);
+  }
+});
+
+test('a value flag without a placeholder is reported instead of shipped', () => {
+  assert.equal(helpProblems().filter((problem) => /placeholder/.test(problem)).length, 0);
 });

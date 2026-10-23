@@ -1,6 +1,6 @@
 /**
- * Command dispatch. Every command is routed here; the ones whose implementation lands in a later
- * step fail with NOT_IMPLEMENTED instead of pretending to work.
+ * Command dispatch. The help text is derived from the same table that parses arguments, so a new
+ * flag cannot appear in the parser and stay missing from `--help`.
  */
 
 import { calc } from './commands/calc.js';
@@ -9,39 +9,78 @@ import { init } from './commands/init.js';
 import { install } from './commands/install.js';
 import { CliError, EXIT, fail } from './lib/errors.js';
 
-export const USAGE = `funky-forge - plan and quote software projects in four gated phases
-
-Usage:
-  funky-forge install [--target <agents|claude>] [--dry-run] [--with-pointer] [--force] [--check] [--json]
-  funky-forge init [--language <en|es>] [--proposal-language <en|es>] [--force] [--json]
-  funky-forge check <phase> [--json] [--strict]
-  funky-forge calc [--write] [--json]
-
-Phases: problem, design, estimate, proposal
-Exit codes: 0 ok, 1 failure, 2 a decision that needs the human
-
-Install the method once per project, then follow the funky-forge skill.`;
-
-const COMMAND_DOCS = {
-  install: 'copy the method pack into a harness skill directory',
-  init: 'create .funky-forge/ from the shipped templates',
-  check: 'validate one phase: schema, dependencies, hashes, arithmetic, gates; read-only',
-  calc: 'recompute hours and price from the blocks in estimate.md',
+const COMMANDS = {
+  install: {
+    summary: 'copy the method pack into a harness skill directory',
+    positionals: '',
+    flags: { target: 'value', 'dry-run': 'boolean', 'with-pointer': 'boolean', force: 'boolean', check: 'boolean', json: 'boolean', help: 'boolean' },
+  },
+  init: {
+    summary: 'create .funky-forge/ from the shipped templates',
+    positionals: '',
+    flags: { language: 'value', 'proposal-language': 'value', force: 'boolean', json: 'boolean', help: 'boolean' },
+  },
+  check: {
+    summary: 'validate one phase: schema, dependencies, hashes, arithmetic, gates; read-only',
+    positionals: '<phase>',
+    flags: { json: 'boolean', strict: 'boolean', help: 'boolean' },
+  },
+  calc: {
+    summary: 'recompute hours and price from the blocks in estimate.md',
+    positionals: '',
+    flags: { write: 'boolean', json: 'boolean', help: 'boolean' },
+  },
 };
 
-const FLAG_DOCS = {
-  '--target': '<agents|claude>; detected when omitted',
-  '--dry-run': 'print the plan and write nothing',
-  '--with-pointer': 'append one marked line to AGENTS.md or CLAUDE.md',
-  '--force': 'overwrite files that differ from the shipped pack',
-  '--check': 'report divergence and write nothing',
-  '--json': 'one JSON object on stdout',
-  '--language': '<en|es> for internal artifacts',
-  '--proposal-language': '<en|es> for the client proposal only',
-  '--strict': 'treat warnings as errors',
-  '--write': 'rewrite the table between the calc markers',
-  '--help': 'show this help',
+/** Value placeholders and one-line descriptions, keyed by the flag name used in COMMANDS. */
+const FLAG_SPECS = {
+  target: { value: '<agents|claude>', summary: 'the harness target; detected when omitted' },
+  'dry-run': { summary: 'print the plan and write nothing' },
+  'with-pointer': { summary: 'append one marked line to AGENTS.md or CLAUDE.md' },
+  force: { summary: 'overwrite files that differ from the shipped pack' },
+  check: { summary: 'report divergence and write nothing' },
+  json: { summary: 'one JSON object on stdout' },
+  language: { value: '<en|es>', summary: 'language for internal artifacts' },
+  'proposal-language': { value: '<en|es>', summary: 'language for the client proposal only; defaults to the artifact language' },
+  strict: { summary: 'treat warnings as errors' },
+  write: { summary: 'rewrite the table between the calc markers' },
+  help: { summary: 'show this help' },
 };
+
+/**
+ * The one true synopsis for a command, generated from its declared flags.
+ * @param {string} command
+ * @returns {string}
+ */
+export function synopsis(command) {
+  const spec = COMMANDS[command];
+  const parts = [`funky-forge ${command}`];
+  if (spec.positionals) parts.push(spec.positionals);
+  for (const [name, kind] of Object.entries(spec.flags)) {
+    if (name === 'help') continue;
+    if (kind === 'value') {
+      const placeholder = FLAG_SPECS[name]?.value ?? '<value>';
+      parts.push(`[--${name} ${placeholder}]`);
+    } else {
+      parts.push(`[--${name}]`);
+    }
+  }
+  return parts.join(' ');
+}
+
+const EXIT_LINE = 'Exit codes: 0 ok, 1 failure, 2 a decision that needs the human';
+
+export const USAGE = [
+  'funky-forge - plan and quote software projects in four gated phases',
+  '',
+  'Usage:',
+  ...Object.keys(COMMANDS).map((command) => `  ${synopsis(command)}`),
+  '',
+  'Phases: problem, design, estimate, proposal',
+  EXIT_LINE,
+  '',
+  'Install the method once per project, then follow the funky-forge skill.',
+].join('\n');
 
 /**
  * @param {string} command
@@ -49,30 +88,44 @@ const FLAG_DOCS = {
  */
 export function commandHelp(command) {
   const spec = COMMANDS[command];
-  const synopsis = USAGE.split('\n').find((line) => line.trim().startsWith(`funky-forge ${command}`));
-  const lines = [`funky-forge ${command} - ${COMMAND_DOCS[command]}`, '', 'Usage:', synopsis ?? `  funky-forge ${command}`, '', 'Flags:'];
+  const lines = [`funky-forge ${command} - ${spec.summary}`, '', 'Usage:', `  ${synopsis(command)}`, '', 'Flags:'];
   for (const [name, kind] of Object.entries(spec.flags)) {
-    const label = kind === 'value' ? `--${name} <value>` : `--${name}`;
-    lines.push(`  ${label.padEnd(26)} ${FLAG_DOCS[`--${name}`] ?? ''}`.trimEnd());
+    const flagSpec = FLAG_SPECS[name];
+    const label = kind === 'value' ? `--${name} ${flagSpec?.value ?? '<value>'}` : `--${name}`;
+    lines.push(`  ${label.padEnd(28)} ${flagSpec?.summary ?? ''}`.trimEnd());
   }
-  lines.push('', 'Exit codes: 0 ok, 1 failure, 2 a decision that needs the human');
+  lines.push('', EXIT_LINE);
   return lines.join('\n');
 }
 
-const COMMANDS = {
-  install: {
-    flags: { target: 'value', 'dry-run': 'boolean', 'with-pointer': 'boolean', force: 'boolean', check: 'boolean', json: 'boolean', help: 'boolean' },
-  },
-  init: {
-    flags: { language: 'value', 'proposal-language': 'value', force: 'boolean', json: 'boolean', help: 'boolean' },
-  },
-  check: {
-    flags: { json: 'boolean', strict: 'boolean', help: 'boolean' },
-  },
-  calc: {
-    flags: { write: 'boolean', json: 'boolean', help: 'boolean' },
-  },
-};
+/**
+ * Structural problems that would let the help text drift from the parser. Empty means consistent.
+ * @returns {string[]}
+ */
+export function helpProblems() {
+  const problems = [];
+  const usedFlags = new Set();
+  for (const [command, spec] of Object.entries(COMMANDS)) {
+    if (typeof spec.summary !== 'string' || spec.summary.trim() === '') problems.push(`command ${command} has no summary`);
+    if (!Object.hasOwn(spec.flags, 'help')) problems.push(`command ${command} does not declare --help`);
+    for (const [name, kind] of Object.entries(spec.flags)) {
+      usedFlags.add(name);
+      const flagSpec = FLAG_SPECS[name];
+      if (!flagSpec) problems.push(`flag --${name} of ${command} has no FLAG_SPECS entry`);
+      else if (typeof flagSpec.summary !== 'string' || flagSpec.summary.trim() === '') problems.push(`flag --${name} has no summary`);
+      else if (kind === 'value' && typeof flagSpec.value !== 'string') problems.push(`value flag --${name} has no placeholder`);
+    }
+  }
+  for (const name of Object.keys(FLAG_SPECS)) {
+    if (!usedFlags.has(name)) problems.push(`FLAG_SPECS documents --${name}, which no command declares`);
+  }
+  for (const [command, spec] of Object.entries(COMMANDS)) {
+    if (!USAGE.includes(synopsis(command))) problems.push(`USAGE is missing the synopsis of ${command}`);
+    if (!synopsis(command).includes(`funky-forge ${command}`)) problems.push(`synopsis of ${command} is malformed`);
+    if (spec.positionals && !synopsis(command).includes(spec.positionals)) problems.push(`synopsis of ${command} omits its positional`);
+  }
+  return problems;
+}
 
 /**
  * @param {string[]} argv
