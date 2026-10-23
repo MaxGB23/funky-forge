@@ -4,6 +4,7 @@
  */
 
 import { calc } from './commands/calc.js';
+import { check } from './commands/check.js';
 import { init } from './commands/init.js';
 import { install } from './commands/install.js';
 import { CliError, EXIT, fail } from './lib/errors.js';
@@ -89,6 +90,7 @@ function dispatch(command, positionals, flags, io) {
   if (command === 'install') return install({ cwd: io.cwd, flags, stdout: io.stdout, stderr: io.stderr });
   if (command === 'init') return init({ cwd: io.cwd, flags, stdout: io.stdout, stderr: io.stderr });
   if (command === 'calc') return calc({ cwd: io.cwd, flags, stdout: io.stdout, stderr: io.stderr });
+  if (command === 'check') return check({ cwd: io.cwd, phase: positionals[0], flags, stdout: io.stdout, stderr: io.stderr });
   if (command === 'check' && positionals.length === 0) {
     throw fail('PHASE_REQUIRED', 'check needs a phase: problem, design, estimate, or proposal');
   }

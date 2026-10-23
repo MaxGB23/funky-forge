@@ -47,11 +47,10 @@ test('every documented command is routed, not rejected as unknown', () => {
   }
 });
 
-test('commands that are not implemented yet say so with a stable code', () => {
-  const { code, err } = run(['check', 'design']);
+test('check on a project without artifacts reports the missing artifact', () => {
+  const { code, out } = run(['check', 'design'], mkdtempSync(join(tmpdir(), 'ff-cli-')));
   assert.equal(code, 1);
-  assert.match(err, /NOT_IMPLEMENTED/);
-  assert.match(err, /check/);
+  assert.match(out, /MISSING_ARTIFACT/);
 });
 
 test('a flag that needs a value fails when the value is missing', () => {
