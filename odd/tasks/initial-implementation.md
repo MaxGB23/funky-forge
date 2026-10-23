@@ -103,7 +103,7 @@ total. Behavior slices stay near or below 400 authored lines.
   `COMPONENT_NOT_ESTIMATED` were warnings when the RFC names them as checks; the arithmetic
   comparison used 0.05 instead of the 0.01 tolerance; a missing `escalation_reason` key and an
   escalated light review passed; `install --json` printed a notice before the JSON. All six fixed
-  in `856b1dd` with tests. Two further RFC 13.3 proposal rules were deliberately left to the
+  in `b5d32b7` with tests. Two further RFC 13.3 proposal rules were deliberately left to the
   reviewer: mapping every estimate block into a proposal phase and proving every brief must-have
   is included or excluded need a declared correspondence the templates do not carry, so a CLI rule
   would guess. The RFC rows are marked `(reviewer)` and `revision.md` states the boundary.
@@ -112,17 +112,17 @@ total. Behavior slices stay near or below 400 authored lines.
 
 | Task | Commit | Result |
 |---|---|---|
-| T1 | `71284c6` | Package scaffold; `funky-forge --help` exits 0, unknown command exits 1; `pnpm test` finds 0 tests |
-| T2 | `130fd79` | Method core: SKILL.md 87 lines, references 00-04, revision.md; pack files 12 excluding templates |
-| T3 | `bc269c4` | 3 reviewer briefs (46-60 lines), 2 schemas, 6 templates |
-| T4 | `4409477` | Project A validated end-to-end with 6 independent reviews; evidence in `docs/validation/project-a.md` |
-| T5 | `83cfb41` | Project B validated end-to-end (7 reviews, 3 design rounds); evidence in `docs/validation/project-b.md` |
-| T6 | `b4ac65f`, `8e65a40` | YAML subset parser, frontmatter, body hash (8/8 real approvals reproduced), markdown helpers, paths, error codes, dispatch; 40 tests |
-| T7 | `385b906` | `install`: target detection, `TARGET_AMBIGUOUS` exit 2, idempotent copy of 18 files, divergence refusal, `--check`, `--dry-run`, one-shot pointer |
-| T8 | `aef6fe7` | `init`: six skeletons from the templates, dependency chain, language flags, `DIR_EXISTS` without `--force`, gates survive |
-| T9 | `16ad569` | `calc`: PERT formula, marker-scoped `--write` (idempotent), `--json` precision, `RATE_MISSING`/`BLOCK_ORDER_INVALID`/`CALC_MARKERS_MISSING`; recomputed both validation projects to the documented numbers (153.67 h / USD 8,390 and 396.83 h / USD 27,858) |
-| T10 | `a8ca402` | `check` core: schema, status, dependency approvals, `approved_hash`, placeholders, gate presence, `--json` with `bodyHash`, `--strict`; read-only |
-| T11 | `1b003f1` | Cross-artifact: component coverage vs components vs rejected alternatives, NFR table, generated-table arithmetic, component pricing, proposal price; 0 errors and 0 warnings on both validation projects |
-| T12 | `114b9b6` | Gate reports: verdict/depth/`findings` count/headings, round-scoped ids (`R3-F1`), `not_verified`, `accepted_risks` with dangling-id detection, `BLOCK_VERDICT`; green on all 8 real gate reports |
-| T13 | `55bc842` | Gate contract in `revision.md` and `SKILL.md`, full README, packed-tarball smoke: 36 files, install from the tarball copies the pack and `init`/`check` work |
-| T14 | `856b1dd` | Acceptance sweep by an independent verifier, then six defects fixed with tests: required body sections, NFR and component errors, 0.01 arithmetic tolerance, gate escalation rules, `install --json` hygiene; 113 tests, 8/8 real phase checks clean |
+| T1 | `e1b320d` | Package scaffold; `funky-forge --help` exits 0, unknown command exits 1; `pnpm test` finds 0 tests |
+| T2 | `825443d` | Method core: SKILL.md 87 lines, references 00-04, revision.md; pack files 12 excluding templates |
+| T3 | `9e8834b` | 3 reviewer briefs (46-60 lines), 2 schemas, 6 templates |
+| T4 | `d324b03` | Project A validated end-to-end with 6 independent reviews; evidence in `docs/validation/project-a.md` |
+| T5 | `a100d75` | Project B validated end-to-end (7 reviews, 3 design rounds); evidence in `docs/validation/project-b.md` |
+| T6 | `d68c08e`, `2501018` | YAML subset parser, frontmatter, body hash (8/8 real approvals reproduced), markdown helpers, paths, error codes, dispatch; 40 tests |
+| T7 | `6c791b5` | `install`: target detection, `TARGET_AMBIGUOUS` exit 2, idempotent copy of 18 files, divergence refusal, `--check`, `--dry-run`, one-shot pointer |
+| T8 | `59e3266` | `init`: six skeletons from the templates, dependency chain, language flags, `DIR_EXISTS` without `--force`, gates survive |
+| T9 | `f002b78` | `calc`: PERT formula, marker-scoped `--write` (idempotent), `--json` precision, `RATE_MISSING`/`BLOCK_ORDER_INVALID`/`CALC_MARKERS_MISSING`; recomputed both validation projects to the documented numbers (153.67 h / USD 8,390 and 396.83 h / USD 27,858) |
+| T10 | `f9e8297` | `check` core: schema, status, dependency approvals, `approved_hash`, placeholders, gate presence, `--json` with `bodyHash`, `--strict`; read-only |
+| T11 | `780e508` | Cross-artifact: component coverage vs components vs rejected alternatives, NFR table, generated-table arithmetic, component pricing, proposal price; 0 errors and 0 warnings on both validation projects |
+| T12 | `0fae855` | Gate reports: verdict/depth/`findings` count/headings, round-scoped ids (`R3-F1`), `not_verified`, `accepted_risks` with dangling-id detection, `BLOCK_VERDICT`; green on all 8 real gate reports |
+| T13 | `79ca4ba` | Gate contract in `revision.md` and `SKILL.md`, full README, packed-tarball smoke: 36 files, install from the tarball copies the pack and `init`/`check` work |
+| T14 | `b5d32b7` | Acceptance sweep by an independent verifier, then six defects fixed with tests: required body sections, NFR and component errors, 0.01 arithmetic tolerance, gate escalation rules, `install --json` hygiene; 113 tests, 8/8 real phase checks clean |
