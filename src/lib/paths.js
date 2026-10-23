@@ -5,6 +5,8 @@
 
 export const PHASES = ['problem', 'design', 'estimate', 'proposal'];
 export const ARTIFACTS_DIR = '.funky-forge';
+export const ASSUMPTIONS_FILE = 'assumptions.md';
+export const DECISIONS_FILE = 'decisions.md';
 
 const ARTIFACT_FILE = {
   problem: 'brief.md',
@@ -56,6 +58,22 @@ export function gateRelativePath(phase) {
 export function gatePath(phase, root = '') {
   assertPhase(phase);
   return joinPosix(root, ARTIFACTS_DIR, gateRelativePath(phase));
+}
+
+/**
+ * @param {string} [root]
+ * @returns {string}
+ */
+export function assumptionsPath(root = '') {
+  return joinPosix(root, ARTIFACTS_DIR, ASSUMPTIONS_FILE);
+}
+
+/**
+ * @param {string} [root]
+ * @returns {string}
+ */
+export function decisionsPath(root = '') {
+  return joinPosix(root, ARTIFACTS_DIR, DECISIONS_FILE);
 }
 
 /**

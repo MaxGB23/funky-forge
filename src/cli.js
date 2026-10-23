@@ -3,6 +3,7 @@
  * step fail with NOT_IMPLEMENTED instead of pretending to work.
  */
 
+import { calc } from './commands/calc.js';
 import { init } from './commands/init.js';
 import { install } from './commands/install.js';
 import { CliError, EXIT, fail } from './lib/errors.js';
@@ -87,6 +88,7 @@ export function flagValue(flags, name) {
 function dispatch(command, positionals, flags, io) {
   if (command === 'install') return install({ cwd: io.cwd, flags, stdout: io.stdout, stderr: io.stderr });
   if (command === 'init') return init({ cwd: io.cwd, flags, stdout: io.stdout, stderr: io.stderr });
+  if (command === 'calc') return calc({ cwd: io.cwd, flags, stdout: io.stdout, stderr: io.stderr });
   if (command === 'check' && positionals.length === 0) {
     throw fail('PHASE_REQUIRED', 'check needs a phase: problem, design, estimate, or proposal');
   }
