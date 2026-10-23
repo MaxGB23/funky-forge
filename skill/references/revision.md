@@ -134,6 +134,21 @@ An entry citing an id that is not a finding in the same report is `GATE_REPORT_M
 `verdict: BLOCK` is `BLOCK_VERDICT`. `not_verified` must be present even when it is empty.
 `funky-forge check <phase>` enforces all of this; `--strict` also turns its warnings into failures.
 
+## What `check` does not decide
+
+The CLI verifies shape, dependencies, hashes, arithmetic, coverage, price, and gate-reports. It
+does not decide:
+
+- whether every estimate block appears in a proposal phase, or whether every brief must-have is
+  included or explicitly excluded. Both need a declared correspondence the templates do not carry
+  yet; the reviewer reads the three documents and says so.
+- whether a component deserves its own estimate block, or whether a component only named under an
+  optional heading belongs in the base price. The CLI warns (`COMPONENT_ONLY_OPTIONAL`); the human
+  decides.
+- whether the price is sensible for the market, and whether the design actually solves the problem.
+
+A passing `check` is a precondition for the gate, never a substitute for the reviewer.
+
 ## Fallback
 
 | Capability missing | Fallback |

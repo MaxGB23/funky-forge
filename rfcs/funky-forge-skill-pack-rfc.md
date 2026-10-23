@@ -968,13 +968,20 @@ Checks per phase:
 | Gate report finding headings parse as `### F<id> - Severity: <level>` | all |
 | `not_verified` present in the gate report (may be empty) | all |
 | `PASS_WITH_RISKS`: every `blocker`/`high` finding has an `accepted_risks` entry | all |
-| Every estimate block appears in a proposal phase | proposal |
-| Every brief must-have is included or explicitly excluded | proposal |
+| Every estimate block appears in a proposal phase (reviewer) | proposal |
+| Every brief must-have is included or explicitly excluded (reviewer) | proposal |
 | Proposal price matches the estimate | proposal |
 | No placeholder tokens (`TBD`, `TODO`, `FIXME`, `[fill]`) and no empty required field | all |
 
 `bodyHash` is always returned, including for a draft: it is the value the orchestrator copies
 into `approved_hash` at approval (section 9.2, rule 6). `check` never writes it.
+
+Two rows above are marked `(reviewer)` on purpose. Mapping every estimate block into a proposal
+phase, and proving that every brief must-have is included or explicitly excluded, require a
+declared correspondence between three documents. The templates do not declare one, so a CLI rule
+would be a guess that passes wrong proposals and blocks right ones. The reviewer owns those two
+rules until the proposal template carries an explicit scope-coverage table (v0.2). `check`
+verifies the part that needs no judgement: the proposal's price against the estimate.
 
 Read-only rationale: a validator that mutates state can revoke approvals silently. Staleness
 propagation is an approval decision, so the orchestrator performs it. If it forgets,
