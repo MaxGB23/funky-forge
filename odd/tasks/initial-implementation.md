@@ -107,6 +107,24 @@ total. Behavior slices stay near or below 400 authored lines.
   reviewer: mapping every estimate block into a proposal phase and proving every brief must-have
   is included or excluded need a declared correspondence the templates do not carry, so a CLI rule
   would guess. The RFC rows are marked `(reviewer)` and `revision.md` states the boundary.
+- **L6** — Post-close review of `b5d32b7` under the native review lifecycle, with receipt-driven
+  development on for the first time (lenses `risk` and `reliability`, tier medium, 708 changed
+  lines, frozen from `79ca4ba`). One candidate-caused finding, confirmed by the refuter and
+  reproduced by hand: the must-have coverage matcher required the singular because of the word
+  boundary after `have`, so a design heading `## Must-haves coverage` was reported as
+  `MISSING_FIELD` and the coverage table stopped being read at all, turning a valid artifact into
+  14 errors (1 `MISSING_FIELD` plus 13 cascading `MISSING_MAPPING`). Both regexes now accept
+  either inflection (`src/lib/required.js`, `src/lib/crosscheck.js`), with the new
+  `tests/required.test.js` and one case in `tests/crosscheck.test.js`; fixed in `98b42ed`, suite
+  129 → 131, and both validation projects still report `ok`. Free-form matching for that heading
+  was the right design and stays: two independent authors wrote `Must-have to component map` and
+  `Must-have coverage`, so exact titles were never viable; accepting the plural completes the
+  contract instead of widening it. The 13-error cascade is deliberately left open: it is
+  diagnosis quality rather than correctness, and the naive guard would risk masking a real
+  `MISSING_MAPPING` on a partially filled section, so it needs its own commit, a test for each
+  branch, and its own review. The native targeted-validator slot could not be captured after the
+  correction, so that lineage stays in `correction_required`; this fix is evidenced by the suite
+  and by the reproduction above, not by that validator.
 
 ## Evidence
 
