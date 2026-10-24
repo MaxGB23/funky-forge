@@ -1,0 +1,36 @@
+# Kept inside the YAML subset `src/lib/yaml.js` parses, so `tests/ci.test.js` can
+# validate this form without adding a YAML dependency. No block scalars here.
+name: Bug report
+description: Something the CLI does wrong, or a report it accepts when it should not
+title: 'fix: '
+labels: ['type:bug']
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The observed output and the exit code. If the CLI reported `ok` for an artifact that is not okay, say so explicitly - that is the failure this project cares about most.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+      description: If a rule was wrong, quote it and say where it is documented.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The smallest artifact or command sequence that shows it. A scratch project in a temporary directory is ideal.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version and environment
+      description: The output of `funky-forge --version`, plus your Node version and operating system.
+      placeholder: 0.1.0, Node 22.11.0, Windows 11
+    validations:
+      required: true

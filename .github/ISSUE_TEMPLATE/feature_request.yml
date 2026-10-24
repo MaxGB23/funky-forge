@@ -1,0 +1,40 @@
+# Kept inside the YAML subset `src/lib/yaml.js` parses, so `tests/ci.test.js` can
+# validate this form without adding a YAML dependency. No block scalars here.
+name: Feature request
+description: A rule, a command or a check that the method needs and the CLI does not have
+title: 'feat: '
+labels: ['type:feature']
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What a user cannot do today, and what they do instead. This package implements a documented method, so a rule is only worth adding when the method already asks for it; if it is not in the RFC or in `skill/SKILL.md`, say where you think it belongs.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you propose
+      description: The command, flag or rule you have in mind, and the exact output or error code it should produce. The CLI rejects guessing rules, so describe what it could verify without inventing a correspondence.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: Including doing nothing.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the method
+      options:
+        - discovery
+        - design
+        - proposal
+        - delivery
+        - install or init
+        - the method documents
+        - something else
+    validations:
+      required: true
