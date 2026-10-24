@@ -29,7 +29,7 @@ covered by tests and has no runtime dependencies.
 
 ## Requirements
 
-Node.js 20.11 or newer. No dependencies, no build step, no network access. npm works; pnpm is
+Node.js 22 or newer. No dependencies, no build step, no network access. npm works; pnpm is
 recommended because we promote one practice whether or not this package needs it:
 `minimumReleaseAge`, which refuses a version until it has been public for a while. Nothing here
 ships dependencies, so the pin protects the machine that clones and builds the repository, not the

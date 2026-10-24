@@ -21,7 +21,7 @@ refine it, the task order, and the evidence. When in doubt, reread the RFC.
   paquete publicado, solo fue un experimento inicial". RFC §16.1 and §18 step 9 are out of
   scope and leave this document as historical guidance.
 - **S6 — License.** `MIT`, as answered by the user.
-- **S7 — Stack.** JavaScript ESM, Node >= 20.11, zero runtime and zero dev dependencies,
+- **S7 — Stack.** JavaScript ESM, Node >= 22, zero runtime and zero dev dependencies,
   `node --test` with `node:assert/strict`, JSDoc types only, pnpm 12 as package manager with a
   repository-level `minimumReleaseAge`. No TypeScript build, no `dist/`.
 - **S8 — Validation first.** Before any CLI code: run the method by hand on two scratch projects
@@ -125,6 +125,24 @@ total. Behavior slices stay near or below 400 authored lines.
   branch, and its own review. The native targeted-validator slot could not be captured after the
   correction, so that lineage stays in `correction_required`; this fix is evidenced by the suite
   and by the reproduction above, not by that validator.
+- **L7** — CI added and the Node floor raised, from the user's instruction: "corrige package json,
+  y deja guardado en memoria las versiones y mas configs que usamos en ci. Pasame el id de la
+  memoria, ya que quiero usarlo en otro repo y ocupo la memoria". The build carried 131 tests that
+  had only ever run on one operating system and one Node version, so portability was an unproven
+  claim for a package that installs as a global CLI. Added `.github/workflows/test.yml` (tests
+  only: `ubuntu-24.04` and `windows-2025` × Node 22 and 24, `node --test`, no install step because
+  the package has no dependencies, `fail-fast: false`, `permissions: contents: read`) and
+  `.gitattributes` (`* text=auto eol=lf` plus a binary block), which caused no renormalization
+  because all 63 tracked files were already LF. Pinning policy, chosen explicitly: exact runner
+  labels instead of `-latest`, because an image keeps receiving OS patches in place and only major
+  migrations are deferred (`ubuntu-latest` moves to 26.04 in November 2026); actions pinned to
+  full commit SHAs with the release tag in a comment (`actions/checkout@v7.0.1`,
+  `actions/setup-node@v7.1.0`); Node pinned by major line only, with `check-latest: true`, so the
+  newest patch of that line is fetched and an upstream security fix lands without editing the
+  workflow. No Dependabot: dependency policy is handled in Funky Secure, so the SHAs are bumped by
+  hand and the procedure is documented in the workflow header. S7 changed accordingly, the floor
+  moving from Node >= 20.11 to Node >= 22 because Node 20 reached end-of-life in April 2026 and CI
+  now proves 22 and 24 only; `package.json` and `README.md` follow the same floor.
 
 ## Evidence
 
