@@ -69,12 +69,22 @@ covered by tests and has no runtime dependencies.
 
 ## 🧰 Requirements
 
-Node.js 22 or newer. No dependencies, no build step, no network access. npm works; pnpm is
-recommended because we promote one practice whether or not this package needs it:
-`minimumReleaseAge`, which refuses a version until it has been public for a while. Nothing here
-ships dependencies, so the pin protects the machine that clones and builds the repository, not the
-consumer. Why it is recommended anyway, and how to tune it:
-[docs/cli.md](docs/cli.md#package-manager).
+Node.js 22 or newer, plus npm or pnpm. Nothing to build, and nothing to install at runtime.
+
+## 🔒 Supply chain
+
+Zero runtime and zero dev dependencies. The shipped code imports four Node built-ins — `crypto`, `fs`,
+`path`, `url` — and nothing else, so there is no vendored package to compromise.
+
+The CLI opens no sockets: no telemetry, no update checks, no registry calls, and `check` is
+read-only. That part is not a promise about your whole workflow, so here is the boundary: the four
+phases run inside your agent harness, so the prompts go to whichever model provider you configured.
+With a local model nothing leaves your machine. That is the only place the network enters, and it is
+your choice rather than the tool's.
+
+`minimumReleaseAge` is recommended anyway, because it protects the machine that clones and builds this
+repository rather than the consumer. CI pins every action to a commit SHA for the same reason. How to
+tune it: [docs/cli.md](docs/cli.md#package-manager).
 
 ## 📥 Install
 
