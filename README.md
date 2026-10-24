@@ -11,48 +11,40 @@ review, and a human decision — instead of a spreadsheet nobody remembers build
   <img src="public/funky-forge-diagram.jpg" width="90%" alt="Four gates: the four artifacts feed an independent review, an automated checklist decides pass or fail, and pricing closes with a final proposal">
 </p>
 
-## Why this exists
-
-This started as a note to myself. I did not know how to organize a project before writing code, and I
-did not know how to charge for one once it was finished: the scope lived in my head, the price was a
-guess, and the guess was wrong in the direction that costs money.
-
-Writing the four artifacts down, in order, with something that refuses to let them contradict each
-other, fixed more than I expected. If you recognize yourself in that, this is for you — especially if
-you are just starting out. The juniors closest to me are the reason this was written down at all.
-
-## Who this is for
-
-Two people read this page, and they are not the same. Neither gets a reduced version: the same four
-artifacts carry what a lead already knows how to decide and what a beginner would not yet know to
-ask. This is not a training-wheels tool a senior has to outgrow.
-
-**You have never planned a project, or never had to say what one costs.** The method asks the
-questions you would not know to ask: who this is for, what is deliberately out of scope, what breaks
-first, how many hours each work block really takes, what the contingency is for, how much margin you
-need to stay in business. The templates carry that structure so you do not have to invent it, and
-`check` names what is still missing instead of letting a vague document pass. You answer in your own
-words; the tool refuses to invent the answer for you.
-
-**You are senior, lead or freelance, and quoting is already part of the job.** You get the part that
-usually lives only in your head: a phase graph where nothing advances on an unapproved artifact, four
-artifacts that must agree with each other, an approval hash that invalidates itself the moment a file
-changes after sign-off, arithmetic recomputed from the table rather than trusted, and a reviewer that
-runs in its own session, blind to your conversation. Decisions that would otherwise pass unnoticed
-get a gate and a name.
-
 ## What you get
 
 - **Four artifacts that must agree**: `brief.md`, `design.md`, `estimate.md`, `proposal.md`, in
   `.funky-forge/` next to your code.
-- **A reviewer per phase**: independent, read-only, and blind to your conversation.
-- **A deterministic check**: schema, dependency chain, approval hash, arithmetic, component
-  coverage, and gate reports — `check` either passes or names the file and the field.
+- **An independent reviewer per phase**: read-only, in its own session, blind to your conversation.
+- **A deterministic check**: schema, dependency chain, approval hash, arithmetic, component coverage,
+  gate reports. `check` either passes or names the file and the field.
 - **A price with its arithmetic shown**: PERT hours per work block, contingency and margin with
   stated reasons, a range, and a monthly cost kept out of the price.
 
 It plans and prices. It does not write your code, and it does not replace the person who decides the
 project is worth doing.
+
+## Why this exists
+
+I did not know how to organize a project before writing code, and I did not know how to charge for one
+once it was finished: the scope lived in my head, the price was a guess, and the guess was wrong in
+the direction that costs money. Writing the four artifacts down, in order, with something that refuses
+to let them contradict each other, fixed more than I expected. If you recognize yourself in that, this
+is for you — especially if you are just starting out.
+
+## Who this is for
+
+Both are doing the same job, and neither gets a reduced version of it.
+
+**You are starting out.** The method asks what you would not know to ask: what is deliberately out of
+scope, what breaks first, how many hours each work block really takes, what the contingency is for,
+how much margin keeps you in business. The templates carry that structure, and `check` names what is
+still missing. You answer in your own words; the tool refuses to invent the answer for you.
+
+**You already quote projects for a living.** What it removes is the invisible part: a scope decision
+made twice in two documents, a quote you cannot reconstruct six months later, a risk that only ever
+lived in your head, an estimate whose total nobody re-added, a phase that quietly started before the
+previous one was approved. Every hand-off is gated, and every gate names what failed.
 
 ## The four phases
 
