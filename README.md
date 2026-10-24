@@ -11,7 +11,7 @@ review, and a human decision — instead of a spreadsheet nobody remembers build
   <img src="public/funky-forge-diagram.jpg" width="90%" alt="Four gates: the four artifacts feed an independent review, an automated checklist decides pass or fail, and pricing closes with a final proposal">
 </p>
 
-## What you get
+## 📦 What you get
 
 - **Four artifacts that must agree**: `brief.md`, `design.md`, `estimate.md`, `proposal.md`, in
   `.funky-forge/` next to your code.
@@ -24,7 +24,7 @@ review, and a human decision — instead of a spreadsheet nobody remembers build
 It plans and prices. It does not write your code, and it does not replace the person who decides the
 project is worth doing.
 
-## Why this exists
+## 💡 Why this exists
 
 I did not know how to organize a project before writing code, and I did not know how to charge for one
 once it was finished: the scope lived in my head, the price was a guess, and the guess was wrong in
@@ -32,7 +32,7 @@ the direction that costs money. Writing the four artifacts down, in order, with 
 to let them contradict each other, fixed more than I expected. If you recognize yourself in that, this
 is for you — especially if you are just starting out.
 
-## Who this is for
+## 🎯 Who this is for
 
 Both are doing the same job, and neither gets a reduced version of it.
 
@@ -46,7 +46,7 @@ made twice in two documents, a quote you cannot reconstruct six months later, a 
 lived in your head, an estimate whose total nobody re-added, a phase that quietly started before the
 previous one was approved. Every hand-off is gated, and every gate names what failed.
 
-## The four phases
+## 🧭 The four phases
 
 | # | Phase | Question | Artifact |
 |---|---|---|---|
@@ -60,14 +60,14 @@ How a phase runs — gates, depth, verdicts, approval and staleness — is
 [docs/architecture.md](docs/architecture.md#who-decides-what); how the numbers are produced is
 [docs/artifacts.md](docs/artifacts.md#estimate-blocks-and-pricing).
 
-## Status
+## 🚧 Status
 
 Pre-release, version `0.1.0`, published at
 [MaxGB23/funky-forge](https://github.com/MaxGB23/funky-forge). The method was validated end to end on
 two projects before any CLI code existed ([evidence](docs/validation/project-a.md)); the CLI is
 covered by tests and has no runtime dependencies.
 
-## Requirements
+## 🧰 Requirements
 
 Node.js 22 or newer. No dependencies, no build step, no network access. npm works; pnpm is
 recommended because we promote one practice whether or not this package needs it:
@@ -76,7 +76,7 @@ ships dependencies, so the pin protects the machine that clones and builds the r
 consumer. Why it is recommended anyway, and how to tune it:
 [docs/cli.md](docs/cli.md#package-manager).
 
-## Install
+## 📥 Install
 
 ```sh
 pnpm add --global funky-forge     # npm install --global funky-forge also works
@@ -99,7 +99,7 @@ git clone https://github.com/MaxGB23/funky-forge
 pnpm add --global link:./funky-forge   # symlinks the clone; edits show up immediately
 ```
 
-## Quick start
+## ⚡ Quick start
 
 ```sh
 funky-forge init --language en --proposal-language es
@@ -110,7 +110,7 @@ funky-forge calc --write               # rewrite the estimate table
 funky-forge check estimate --strict
 ```
 
-## Documentation
+## 📚 Documentation
 
 | Document | What it answers |
 |---|---|
@@ -123,7 +123,7 @@ funky-forge check estimate --strict
 Start with the method if you are learning the loop, and with the architecture if you want to know why
 the tool cannot approve its own output.
 
-## Harnesses and models
+## 🤖 Harnesses and models
 
 The method needs three capabilities: read files, write files, run a shell command. Results, however,
 depend on what you configure: the orchestrator and each reviewer run on whatever your platform uses
@@ -132,7 +132,7 @@ by approving work that should not pass. Put your strongest reasoning model on th
 the `design` and `estimate` reviews, and keep the reviewer in a separate session. Details:
 [docs/method.md](docs/method.md#review-quality-and-models).
 
-## Development
+## 🛠️ Development
 
 ```sh
 pnpm test                # node --test, no dependencies to install
@@ -143,6 +143,6 @@ node bin/funky-forge.js  # run the working tree without linking anything
 `pnpm test` also fails if the generated help drifts from the command table, or if a documentation
 link points at a file that does not exist.
 
-## License
+## 📄 License
 
-MIT
+[MIT](./LICENSE) © Max González Ballesteros (@maxgb23)

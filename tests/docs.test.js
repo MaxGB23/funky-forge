@@ -43,7 +43,10 @@ function slug(heading) {
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-');
+    .replace(/\s+/g, '-')
+    // GitHub drops a leading emoji and keeps the slug clean; without this trim a heading like
+    // "## 📄 License" would be recorded as `-license` and a correct `#license` link would fail.
+    .replace(/^-+|-+$/g, '');
 }
 
 /** @param {string} file */
