@@ -7,6 +7,40 @@ method's own rules be broken by accident.
 The point is a price you can defend: every number traces back to a written artifact, an independent
 review, and a human decision — instead of a spreadsheet nobody remembers building.
 
+<p align="center">
+  <img src="public/funky-forge-diagram.jpg" width="90%" alt="Four gates: the four artifacts feed an independent review, an automated checklist decides pass or fail, and pricing closes with a final proposal">
+</p>
+
+## Why this exists
+
+This started as a note to myself. I did not know how to organize a project before writing code, and I
+did not know how to charge for one once it was finished: the scope lived in my head, the price was a
+guess, and the guess was wrong in the direction that costs money.
+
+Writing the four artifacts down, in order, with something that refuses to let them contradict each
+other, fixed more than I expected. If you recognize yourself in that, this is for you — especially if
+you are just starting out. The juniors closest to me are the reason this was written down at all.
+
+## Who this is for
+
+Two people read this page, and they are not the same. Neither gets a reduced version: the same four
+artifacts carry what a lead already knows how to decide and what a beginner would not yet know to
+ask. This is not a training-wheels tool a senior has to outgrow.
+
+**You have never planned a project, or never had to say what one costs.** The method asks the
+questions you would not know to ask: who this is for, what is deliberately out of scope, what breaks
+first, how many hours each work block really takes, what the contingency is for, how much margin you
+need to stay in business. The templates carry that structure so you do not have to invent it, and
+`check` names what is still missing instead of letting a vague document pass. You answer in your own
+words; the tool refuses to invent the answer for you.
+
+**You are senior, lead or freelance, and quoting is already part of the job.** You get the part that
+usually lives only in your head: a phase graph where nothing advances on an unapproved artifact, four
+artifacts that must agree with each other, an approval hash that invalidates itself the moment a file
+changes after sign-off, arithmetic recomputed from the table rather than trusted, and a reviewer that
+runs in its own session, blind to your conversation. Decisions that would otherwise pass unnoticed
+get a gate and a name.
+
 ## What you get
 
 - **Four artifacts that must agree**: `brief.md`, `design.md`, `estimate.md`, `proposal.md`, in
@@ -19,6 +53,20 @@ review, and a human decision — instead of a spreadsheet nobody remembers build
 
 It plans and prices. It does not write your code, and it does not replace the person who decides the
 project is worth doing.
+
+## The four phases
+
+| # | Phase | Question | Artifact |
+|---|---|---|---|
+| 1 | `problem` | Is this worth building, and for whom? | `brief.md` |
+| 2 | `design` | What is the minimum design that satisfies the brief? | `design.md` |
+| 3 | `estimate` | How much does it cost, and why? | `estimate.md` |
+| 4 | `proposal` | What exactly is being sold? | `proposal.md` |
+
+How a phase runs — gates, depth, verdicts, approval and staleness — is
+[docs/method.md](docs/method.md); why a phase cannot approve its own work is
+[docs/architecture.md](docs/architecture.md#who-decides-what); how the numbers are produced is
+[docs/artifacts.md](docs/artifacts.md#estimate-blocks-and-pricing).
 
 ## Status
 
@@ -70,15 +118,6 @@ funky-forge calc --write               # rewrite the estimate table
 funky-forge check estimate --strict
 ```
 
-The four phases:
-
-| # | Phase | Question | Artifact |
-|---|---|---|---|
-| 1 | `problem` | Is this worth building, and for whom? | `brief.md` |
-| 2 | `design` | What is the minimum design that satisfies the brief? | `design.md` |
-| 3 | `estimate` | How much does it cost, and why? | `estimate.md` |
-| 4 | `proposal` | What exactly is being sold? | `proposal.md` |
-
 ## Documentation
 
 | Document | What it answers |
@@ -88,6 +127,9 @@ The four phases:
 | [docs/artifacts.md](docs/artifacts.md) | Every file format: frontmatter, statuses, hashing, required sections, gate reports, estimate schema |
 | [docs/cli.md](docs/cli.md) | Commands, flags, exit codes, full error catalogue, JSON shapes, guarantees |
 | [docs/validation/](docs/validation/) | Two complete projects planned with the method, with their findings |
+
+Start with the method if you are learning the loop, and with the architecture if you want to know why
+the tool cannot approve its own output.
 
 ## Harnesses and models
 

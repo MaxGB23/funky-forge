@@ -24,9 +24,13 @@ function docsFiles() {
   return files;
 }
 
-/** @param {string} text */
+/** Markdown links plus the raw HTML image sources the README uses to size a picture. Both are
+ * checked, so an image that moves cannot quietly stop rendering.
+ * @param {string} text */
 function links(text) {
-  return [...text.matchAll(/\]\(([^)\s]+)\)/g)].map((match) => match[1]);
+  const inline = [...text.matchAll(/\]\(([^)\s]+)\)/g)].map((match) => match[1]);
+  const raw = [...text.matchAll(/<img[^>]*\bsrc="([^"]+)"/g)].map((match) => match[1]);
+  return [...inline, ...raw];
 }
 
 /**
