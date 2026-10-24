@@ -1,0 +1,15 @@
+# Normalize line endings on commit and checkout so the shipped templates and
+# generated artifacts are byte-identical on every platform.
+* text=auto eol=lf
+
+# Binary assets must never be converted or diffed as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
+*.zip binary

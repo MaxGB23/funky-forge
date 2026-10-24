@@ -1,0 +1,73 @@
+name: tests
+
+# Tests only. Publishing stays a manual, deliberate decision.
+#
+# Pinning policy, deliberately mixed: pin what must not change, float what must
+# receive security fixes.
+#   - Runner images: exact labels, never `-latest`. An image keeps receiving OS
+#     patches in place, so the exact label only opts out of major migrations
+#     (for example `ubuntu-latest` moving to 26.04), which would otherwise turn
+#     this suite red on the vendor's schedule instead of ours.
+#   - Actions: full commit SHA plus the release tag in a comment. Bump both
+#     together, by hand: dependency policy for this repository lives in Funky
+#     Secure, not in Dependabot. To refresh one:
+#       curl -sS https://api.github.com/repos/actions/checkout/releases/latest | grep tag_name
+#       curl -sS https://api.github.com/repos/actions/checkout/commits/<tag> | grep -m1 '"sha"'
+#   - Node.js: major line only, so every run gets the newest patch of that line
+#     (see check-latest below) instead of a frozen point release.
+on:
+  push:
+    branches: [main]
+  # `labeled` and `edited` matter: the policy job reads the labels and the body,
+  # and both can change after the pull request already exists.
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # No job name on purpose: GitHub renders it as `test (ubuntu-24.04, 22)`,
+    # which is the exact string a future branch protection rule would match.
+    strategy:
+      # One failing platform must not hide the others: the point of the matrix
+      # is to see Windows and Linux results side by side.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+        # Both supported LTS lines. Node 20 reached end-of-life in April 2026.
+        node: [22, 24]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          # Do not settle for the patch already cached in the runner image:
+          # fetch the newest release of this line so a security fix published
+          # upstream lands here without editing this workflow.
+          check-latest: true
+      # No dependency install: the package has zero dependencies, so the suite
+      # runs against a bare Node toolchain.
+      - name: Run the test suite
+        run: node --test
+
+  # Contribution policy, enforced rather than hoped for. It only runs on pull
+  # requests, and nothing is protected: branch protection is deliberately absent
+  # here, so this is feedback, not a gate.
+  pr-policy:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          check-latest: true
+      - name: Pull request policy
+        run: node scripts/check-pr-policy.js
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
