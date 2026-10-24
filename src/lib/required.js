@@ -11,7 +11,7 @@ function exactTitle(name) {
   return (title) => title.trim().toLowerCase() === name.toLowerCase();
 }
 
-const MUST_HAVE_COVERAGE = /must[- ]have\b.*(map|coverage)/i;
+const MUST_HAVE_COVERAGE = /must[- ]haves?\b.*(map|coverage)/i;
 const OPEN_DECISIONS = /^open\b.*\bdecisions?\b/i;
 
 /**

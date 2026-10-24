@@ -36,7 +36,7 @@ export function componentNames(designBody) {
  * @returns {{components: string[], coverage: {row: string[], components: string[]}[]}}
  */
 export function coverageTable(designBody) {
-  const found = findSection(designBody, /must-ha(?:ve|ve)\b.*(?:map|coverage)|cobertura/i);
+  const found = findSection(designBody, /must-haves?\b.*(?:map|coverage)|cobertura/i);
   if (!found) return { components: componentNames(designBody), coverage: [] };
   const rows = tableRows(found.content);
   if (rows.length < 2) return { components: componentNames(designBody), coverage: [] };

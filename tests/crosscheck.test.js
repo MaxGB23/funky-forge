@@ -53,6 +53,11 @@ test('a complete coverage map has no findings', () => {
   assert.deepEqual(result.warnings, []);
 });
 
+test('a plural must-haves coverage heading still reads the map', () => {
+  const body = DESIGN.replace('## Must-have to component map', '## Must-haves to component map');
+  assert.deepEqual(designCrossChecks({ designBody: body }).errors, []);
+});
+
 test('a component missing from coverage and from rejected alternatives is MISSING_MAPPING', () => {
   const body = DESIGN.replace('| 2 | checkout rows | Ledger |\n', '');
   const result = designCrossChecks({ designBody: body });
