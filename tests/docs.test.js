@@ -24,7 +24,7 @@ function docsFiles() {
   return files;
 }
 
-/** Markdown links plus the raw HTML image sources the README uses to size a picture. Both are
+/** Markdown links plus the raw HTML image sources a document may use to size a picture. Both are
  * checked, so an image that moves cannot quietly stop rendering.
  * @param {string} text */
 function links(text) {

@@ -7,9 +7,7 @@ method's own rules be broken by accident.
 The point is a price you can defend: every number traces back to a written artifact, an independent
 review, and a human decision — instead of a spreadsheet nobody remembers building.
 
-<p align="center">
-  <img src="public/funky-forge-diagram.jpg" width="90%" alt="Four gates: the four artifacts feed an independent review, an automated checklist decides pass or fail, and pricing closes with a final proposal">
-</p>
+![Four gates: the four artifacts feed an independent review, an automated checklist decides pass or fail, and pricing closes with a final proposal](public/funky-forge-diagram.jpg)
 
 ## 📦 What you get
 
