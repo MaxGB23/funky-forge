@@ -1,6 +1,6 @@
 ---
 name: funky-forge
-description: Plan and quote software projects in four gated phases: problem, design, estimate, proposal. Use when the user wants to define scope, challenge a design, estimate effort, or produce a client proposal.
+description: 'Plan and quote software projects in four gated phases: problem, design, estimate, proposal. Use when the user wants to define scope, challenge a design, estimate effort, or produce a client proposal.'
 ---
 
 # funky-forge
