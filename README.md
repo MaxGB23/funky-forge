@@ -151,6 +151,9 @@ node bin/funky-forge.js  # run the working tree without linking anything
 `pnpm test` also fails if the generated help drifts from the command table, or if a documentation
 link points at a file that does not exist.
 
+Developed and validated with Pi (gentle-shell) and Gentle AI. Nothing in the method depends on them:
+any harness that can read and write files and run a shell works.
+
 ## 📄 License
 
 [MIT](./LICENSE) © Max González Ballesteros (@maxgb23)
