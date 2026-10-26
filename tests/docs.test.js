@@ -3,6 +3,8 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import test from 'node:test';
 
+import { CLAUDE_MARKER, SHARED_MARKERS } from '../src/commands/install.js';
+
 const ROOT = resolve(import.meta.dirname, '..');
 
 /** @param {string} file */
@@ -99,4 +101,13 @@ test('every top-level document is reachable from the README', () => {
 test('the README stays an introduction, not the reference', () => {
   const lines = markdown('README.md').split('\n').length;
   assert.ok(lines <= 170, `README grew to ${lines} lines; move detail into docs/`);
+});
+
+test('the CLI reference names exactly the markers detection checks', () => {
+  const row = markdown('docs/cli.md')
+    .split('\n')
+    .find((line) => line.startsWith('| Detection |'));
+  assert.notEqual(row, undefined, 'docs/cli.md describes no detection markers');
+  const documented = new Set([...row.matchAll(/`(\.[^`]*)`/g)].map((match) => match[1].replace(/\/$/, '')));
+  assert.deepEqual(documented, new Set([CLAUDE_MARKER, ...SHARED_MARKERS]));
 });

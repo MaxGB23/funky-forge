@@ -17,7 +17,8 @@ export const TARGETS = {
 };
 
 const POINTER_BLOCK = ['<!-- funky-forge -->', 'For project planning or quoting, load the `funky-forge` skill.'].join('\n');
-const SHARED_MARKERS = ['.agents/skills', '.opencode', '.codex'];
+export const CLAUDE_MARKER = '.claude';
+export const SHARED_MARKERS = ['.agents/skills', '.opencode', '.codex'];
 
 /**
  * @param {string} source
@@ -42,7 +43,7 @@ export function detectTargets(cwd) {
   const found = [];
   const shared = SHARED_MARKERS.filter((marker) => existsSync(join(cwd, marker)));
   if (shared.length > 0) found.push({ target: 'agents', markers: shared });
-  if (existsSync(join(cwd, '.claude'))) found.push({ target: 'claude', markers: ['.claude'] });
+  if (existsSync(join(cwd, CLAUDE_MARKER))) found.push({ target: 'claude', markers: [CLAUDE_MARKER] });
   return found;
 }
 
