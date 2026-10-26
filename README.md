@@ -96,7 +96,7 @@ funky-forge init
 
 | Harness | Target | Flag |
 |---|---|---|
-| Pi, OpenCode, Codex, Antigravity CLI... | `.agents/skills/funky-forge/` | `--target agents` |
+| Pi / Gentle Shell, OpenCode, Codex, Antigravity CLI... | `.agents/skills/funky-forge/` | `--target agents` |
 | Claude Code | `.claude/skills/funky-forge/` | `--target claude` |
 
 Detection is automatic. When both harness markers exist the command refuses to guess, exits `2` with
@@ -150,9 +150,6 @@ node bin/funky-forge.js  # run the working tree without linking anything
 
 `pnpm test` also fails if the generated help drifts from the command table, or if a documentation
 link points at a file that does not exist.
-
-Developed and validated with Pi (gentle-shell) and Gentle AI. Nothing in the method depends on them:
-any harness that can read and write files and run a shell works.
 
 ## 📄 License
 
