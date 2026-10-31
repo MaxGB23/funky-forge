@@ -21,7 +21,8 @@
   "scripts": {
     "test": "node --test",
     "test:watch": "node --test --watch",
-    "pack:check": "npm pack --dry-run"
+    "pack:check": "node scripts/pack-guard.js",
+    "prepublishOnly": "node --test && node scripts/pack-guard.js"
   },
   "keywords": [
     "planning",
