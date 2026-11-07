@@ -153,4 +153,4 @@ link points at a file that does not exist.
 
 ## 📄 License
 
-[MIT](./LICENSE) © Max González Ballesteros (@maxgb23)
+MIT © 2026 Maximiliano González Ballesteros — see [LICENSE](LICENSE).

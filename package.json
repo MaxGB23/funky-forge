@@ -4,6 +4,10 @@
   "description": "Portable planning and quoting method with a deterministic CLI: four gated phases from a fuzzy idea to a client proposal.",
   "type": "module",
   "license": "MIT",
+  "author": {
+    "name": "Maximiliano González Ballesteros",
+    "url": "https://github.com/MaxGB23"
+  },
   "engines": {
     "node": ">=22.0.0"
   },
@@ -31,6 +35,10 @@
     "agent-skills",
     "cli"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MaxGB23/funky-forge.git"
+  },
   "dependencies": {},
   "devDependencies": {}
 }
