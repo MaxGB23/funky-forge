@@ -126,6 +126,7 @@ funky-forge check estimate --strict
 | [docs/method.md](docs/method.md) | How a phase runs: gates, depth, verdicts, approval, convergence, degraded modes |
 | [docs/artifacts.md](docs/artifacts.md) | Every file format: frontmatter, statuses, hashing, required sections, gate reports, estimate schema |
 | [docs/cli.md](docs/cli.md) | Commands, flags, exit codes, full error catalogue, JSON shapes, guarantees |
+| [docs/release.md](docs/release.md) | How a version ships: staging over OIDC, the human approval, the tag, and the registry traps |
 | [docs/validation/](docs/validation/) | Two complete projects planned with the method, with their findings |
 
 Start with the method if you are learning the loop, and with the architecture if you want to know why

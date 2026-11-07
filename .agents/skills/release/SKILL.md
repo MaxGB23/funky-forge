@@ -18,8 +18,9 @@ candidate, never moves a tag, and never runs `npm publish`.
 Any one of these being false means the release stops here, before anything touches the registry.
 
 - A clean tree on `main`, and a gate that was green for the commit the tag will name.
-- `package.json` `version` equals the tag without its `v`. This repository has no guard script for it,
-  so compare the two by hand before tagging: a mismatch publishes nothing useful and cannot be undone.
+- `package.json` `version` equals the tag without its `v`. `node scripts/release-guard.js --tag vX.Y.Z`
+  answers that with exit `2` on a mismatch, and the release workflow runs the same guard before the
+  stage: after the stage the only move left is a reject, which needs 2FA.
 - `npm --version` is 11.15.0 or higher. `npm stage` does not exist before it.
 - 2FA is enabled for writes on the account.
 - The package's trusted publisher allows **`npm stage publish` only**, never `npm publish`.
@@ -39,10 +40,14 @@ Any one of these being false means the release stops here, before anything touch
    `npm stage download <id>`, then read the tarball's file set against the `files` contract.
 5. **Approves with 2FA** — the maintainer. Nothing is installable before this.
 6. **Verifies what users get** — the maintainer. `npm view funky-forge@<version>`,
-   `npm view funky-forge@<version> dist.integrity`, and `npx funky-forge@<version> --version`.
-7. **Publishes the Release** — the maintainer, after the approval and never before. Write
-   `RELEASE_NOTES.md`, run `gh release create vX.Y.Z --title "vX.Y.Z" --notes-file RELEASE_NOTES.md`,
-   then delete the file.
+   `npm view funky-forge@<version> dist.integrity`, `dist.attestations`, and
+   `npx funky-forge@<version> --version`. The attestation is the only link between the commit and the
+   bytes a user installs, and it survives staged approval — measured on `funky-secure@0.10.2`.
+7. **Publishes the Release** — the maintainer, after the approval and never before. Release
+   immutability is enabled **first** (Settings → Releases), because GitHub applies it only to releases
+   published after the setting is on. Write `RELEASE_NOTES.md` with the tagged commit, the
+   `dist.integrity` and the provenance URL, run
+   `gh release create vX.Y.Z --title "vX.Y.Z" --notes-file RELEASE_NOTES.md`, then delete the file.
 
 ## First publication
 
@@ -50,9 +55,10 @@ One release in a package's life cannot follow that sequence, because a trusted p
 on a package and a package exists only after a first publish.
 
 1. From the commit the tag names, stage the first candidate locally: `npm login`, then
-   `npm stage publish --access public`. This claims the name and queues a candidate. A local session
-   is a two-hour credential that expires on its own and appears in no token list, so there is nothing
-   to log out of.
+   `npm stage publish --access public`, **with a version that will never ship** (`0.0.1`). A staged
+   version occupies the same semver index as a published one, so claiming with the release version
+   would make that version impossible to stage from CI. A local session is a two-hour credential that
+   expires on its own and appears in no token list, so there is nothing to log out of.
 2. Configure the trusted publisher, and let the session expire.
 3. Stage the **next** version from CI over OIDC and approve it with 2FA. **Do not reject the candidate
    from step 1 first.** Rejecting the only content of a placeholder-only package unpublishes the
@@ -60,6 +66,8 @@ on a package and a package exists only after a first publish.
    `E401 Unable to authenticate`, which reads like a wrong field and is really a package that no
    longer exists.
 4. Reject the leftover candidate only once a real version is published. Until then, leave it queued.
+   `npm stage reject` asks for 2FA exactly like `approve`, so it needs a live session: log in again if
+   the first one expired.
 
 ## Hard rules
 
