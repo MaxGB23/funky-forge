@@ -103,6 +103,26 @@ test('the README stays an introduction, not the reference', () => {
   assert.ok(lines <= 170, `README grew to ${lines} lines; move detail into docs/`);
 });
 
+/// A version written into a document is a second copy of a fact `package.json` and the tag already
+/// own, and README.md travels inside every tarball, so the copy reaches npm one release late by
+/// construction. The rule here is the narrow one: a document may restate the version, and never a
+/// different one.
+
+test('no document names a version the manifest does not own', () => {
+  const version = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
+  assert.match(version, /^\d+\.\d+\.\d+$/, 'package.json carries no semver version');
+
+  for (const file of docsFiles()) {
+    for (const match of markdown(file).matchAll(/funky-forge@(\d+\.\d+\.\d+)/g)) {
+      assert.equal(
+        match[1],
+        version,
+        `${file} names funky-forge@${match[1]}, and the manifest says ${version}`,
+      );
+    }
+  }
+});
+
 test('the CLI reference names exactly the markers detection checks', () => {
   const row = markdown('docs/cli.md')
     .split('\n')

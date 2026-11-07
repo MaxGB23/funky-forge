@@ -65,11 +65,11 @@ How a phase runs — gates, depth, verdicts, approval and staleness — is
 
 ## 🏷️ Status
 
-First release, version `0.1.0`, on [npm](https://www.npmjs.com/package/funky-forge): GitHub Actions
-staged it over OIDC from the tag and a maintainer approved it with 2FA, so the tarball carries SLSA
-provenance ([the contract](docs/release.md)). The method was validated end to end on two projects
-before any CLI code existed ([evidence](docs/validation/project-a.md)); the CLI is covered by tests
-and has no runtime dependencies.
+Published on [npm](https://www.npmjs.com/package/funky-forge): GitHub Actions staged it over OIDC
+from the tag and a maintainer approved it with 2FA, so the tarball carries SLSA provenance
+([the contract](docs/release.md)). The method was validated end to end on two projects before any CLI
+code existed ([evidence](docs/validation/project-a.md)); the CLI is covered by tests and has no
+runtime dependencies.
 
 ## 🧰 Requirements
 
