@@ -43,7 +43,10 @@ Any one of these being false means the release stops here, before anything touch
    the package and destroys its trusted publisher.
 4. **Reviews the candidate** — the maintainer. `npm stage list`, `npm stage view <id>`,
    `npm stage download <id>`, then read the tarball's file set against the `files` contract.
-5. **Approves with 2FA** — the maintainer. Nothing is installable before this.
+5. **Approves with 2FA** — the maintainer. Nothing is installable before this. A fresh candidate
+   reports `validating` before `staged`: approve only once it reads `staged`. And an unapproved
+   candidate is not free — the semver index treats that version as taken — so decide: approve it, or
+   reject it deliberately with `npm stage reject <id>`.
 6. **Verifies what users get** — the maintainer. `npm view funky-forge@<version>`,
    `npm view funky-forge@<version> dist.integrity`, `dist.attestations`, and
    `npx funky-forge@<version> --version`. The attestation is the only link between the commit and the
