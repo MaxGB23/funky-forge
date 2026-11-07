@@ -17,10 +17,13 @@ edited once it is settled; the present is edited freely in its own pull request.
 | `docs/method.md` | the method the CLI implements, in prose |
 | `docs/artifacts.md` | the files a run produces and what each one is for |
 | `docs/validation/` | real projects the method was exercised on |
+| `docs/release.md` | how a version ships: staging over OIDC, the human approval, the tag, the registry traps |
 | `docs/images/diagrams.md` | how the shipped diagram is made, so it can be remade |
 | `rfcs/` | the record: what was decided and why, frozen once settled |
 | `odd/tasks/` | feature records: specs, tasks and an append-only log |
 | `scripts/pack-guard.js` | the publish gate: the packed set against the `files` contract |
+| `scripts/release-guard.js` | the release gate: the tag must name the version in the manifest |
+| `scripts/stage-report.js` | reads the stage id out of npm's `--json` report and puts it in the run summary |
 | `scripts/check-pr-policy.js` | the pull-request policy CI runs |
 | `tests/` | the suite; `node --test`, no framework |
 | `CONTRIBUTING.md` | the rules a contributor reads first |
