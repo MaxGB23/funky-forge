@@ -19,9 +19,11 @@ on:
   push:
     branches: [main]
   # `labeled` and `edited` matter: the policy job reads the labels and the body,
-  # and both can change after the pull request already exists.
+  # and both can change after the pull request already exists. `ready_for_review`
+  # matters for the same reason: the job is guarded on a draft, so the run that
+  # decides is the one that fires when the draft becomes ready.
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled, edited]
+    types: [opened, synchronize, reopened, labeled, unlabeled, edited, ready_for_review]
 
 permissions:
   contents: read
@@ -56,8 +58,14 @@ jobs:
   # Contribution policy, enforced rather than hoped for. It only runs on pull
   # requests, and nothing is protected: branch protection is deliberately absent
   # here, so this is feedback, not a gate.
+  #
+  # A draft is not a candidate yet. `gh pr create --label` attaches the label
+  # after the pull request exists, so the `opened` run of a draft reads an empty
+  # PR_LABELS and reports a violation nobody caused: one email per pull request,
+  # on a job whose only purpose is feedback. Guarding the job removes that red,
+  # and `ready_for_review` above fires the run that decides.
   pr-policy:
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

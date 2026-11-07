@@ -117,6 +117,22 @@ test('the contribution policy runs on the payload it reads, and only on pull req
   assert.match(WORKFLOW, /labeled/, 'a label changed after the pull request opened would not re-run the job');
 });
 
+test('a draft pull request does not decide its own policy', () => {
+  // `gh pr create --label` attaches the label after the pull request exists, so the `opened` run of a
+  // draft reads an empty PR_LABELS and reports a failure nobody caused: one email per pull request, on
+  // a job that exists to give feedback. `ready_for_review` is what fires the run that decides.
+  assert.match(
+    WORKFLOW,
+    /ready_for_review/,
+    'a draft that becomes ready for review would never re-run the policy',
+  );
+  assert.match(
+    WORKFLOW,
+    /github\.event\.pull_request\.draft == false/,
+    'the policy job decides a draft, where the label it reads is not attached yet',
+  );
+});
+
 test('every issue form parses and declares the fields GitHub requires', () => {
   const forms = ['bug_report', 'feature_request'];
 
