@@ -1,0 +1,48 @@
+name: release
+
+# Publication is reachable only from a version tag. Never add `pull_request` or a branch to this
+# trigger: a pull request that can reach the staging job is the defect this workflow exists to
+# prevent. `tests/release-workflow.test.js` asserts that shape.
+#
+# The job stages; it does not publish. A maintainer approves the candidate with two factors, which no
+# token can do, and the trusted publisher is configured with stage permission only, so the direct
+# publish path is closed even if this file were changed.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          check-latest: true
+          registry-url: https://registry.npmjs.org
+      # The npm bundled with Node 24.16 is 11.13.0, and `npm stage` does not exist before 11.15.0:
+      # without this upgrade the staging step fails as an unknown command. `^` keeps it inside npm 11.
+      - name: install the npm that can stage
+        run: npm install --global npm@^11.15.0
+      # A tag that does not name the version in package.json would stage bytes describing themselves
+      # as something else, and a staged version occupies the same index a published one would.
+      - name: the tag must name the package version
+        run: node scripts/release-guard.js --tag "$GITHUB_REF_NAME"
+      # Staging is not publication: it is npm's own publish with staging on, so `prepublishOnly` runs
+      # first — the suite and the packed-set contract — and this job holds no credential that can
+      # approve the candidate it produces.
+      - name: stage the candidate
+        run: npm stage publish --access public --json > "$RUNNER_TEMP/stage-publish.json"
+      # Approval needs 2FA and happens after this job ends, so the id has to leave with the run. The
+      # report file also carries the gate's output, because npm inherits stdio into it, and the id
+      # itself is one level down under the package name: `scripts/stage-report.js` reads both shapes,
+      # in a file a test can run rather than in a heredoc nothing can reach.
+      - name: report the stage id
+        run: node scripts/stage-report.js --report "$RUNNER_TEMP/stage-publish.json"
