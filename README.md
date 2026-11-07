@@ -3,7 +3,7 @@
 [![ci](https://img.shields.io/github/actions/workflow/status/MaxGB23/funky-forge/test.yml?branch=main&label=ci&logo=githubactions&logoColor=white&style=flat-square&labelColor=1f2937)](https://github.com/MaxGB23/funky-forge/actions/workflows/test.yml)
 [![npm](https://img.shields.io/npm/v/funky-forge?label=npm&logo=npm&logoColor=white&style=flat-square&labelColor=1f2937&color=3f6fd8)](https://www.npmjs.com/package/funky-forge)
 [![license](https://img.shields.io/npm/l/funky-forge?label=license&style=flat-square&labelColor=1f2937&color=3f6fd8)](LICENSE)
-[![provenance](https://img.shields.io/badge/provenance-SLSA%20v1-8a2be2?logo=sigstore&logoColor=white&style=flat-square&labelColor=1f2937)](https://registry.npmjs.org/-/npm/v1/attestations/funky-forge@0.1.0)
+[![provenance](https://img.shields.io/badge/provenance-SLSA%20v1-8a2be2?logo=sigstore&logoColor=white&style=flat-square&labelColor=1f2937)](https://www.npmjs.com/package/funky-forge)
 
 Plan and quote software projects in four gated phases: problem, design, estimate, proposal.
 A portable skill pack for any agent harness, plus a small deterministic CLI that refuses to let the
