@@ -36,6 +36,11 @@ Any one of these being false means the release stops here, before anything touch
 2. **Push the tag** — the owner. `git tag vX.Y.Z && git push origin vX.Y.Z`, on the commit from step 1.
 3. **Stages the candidate** — the release workflow, over OIDC, with no credential anywhere. It ends
    with the stage id in its step summary and does not publish.
+   **A failed report does not undo the stage.** When the step that reads the id dies, the candidate
+   exists: `npm stage list` returns it and `npm stage approve <id>` continues normally. Do not
+   re-push the tag — it does not move, and the version is already queued — and do not reject the
+   candidate to "clean up": on a package whose only content is the placeholder, a reject unpublishes
+   the package and destroys its trusted publisher.
 4. **Reviews the candidate** — the maintainer. `npm stage list`, `npm stage view <id>`,
    `npm stage download <id>`, then read the tarball's file set against the `files` contract.
 5. **Approves with 2FA** — the maintainer. Nothing is installable before this.
