@@ -32,6 +32,11 @@ package name**, and `prepublishOnly` inherits stdio, so the gate's output lands 
 npm's payload. Either one alone makes the report fail *after* the package is staged, which is a red run
 over a release that really happened and no id for anyone to approve.
 
+**A failed report does not undo the stage.** The candidate is queued: `npm stage list` returns its id and
+`npm stage approve <id>` continues the normal path. Do not re-push the tag — it does not move, and the
+version it names is already spent — and do not reject the candidate to "clean up": on a package whose
+only content is the placeholder, a reject unpublishes the package and destroys its trusted publisher.
+
 ## The tag
 
 `vX.Y.Z`, and it must name `package.json`'s `version`; `scripts/release-guard.js` exits `2` when it does
