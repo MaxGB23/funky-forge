@@ -35,6 +35,9 @@ the direction that costs money. Writing the four artifacts down, in order, with 
 to let them contradict each other, fixed more than I expected. If you recognize yourself in that, this
 is for you — especially if you are just starting out.
 
+The method was validated end to end on two projects before any CLI code existed, and those two projects
+are the evidence rather than a testimonial: [docs/validation/](docs/validation/).
+
 ## 🎯 Who this is for
 
 Both are doing the same job, and neither gets a reduced version of it.
@@ -62,14 +65,6 @@ How a phase runs — gates, depth, verdicts, approval and staleness — is
 [docs/method.md](docs/method.md); why a phase cannot approve its own work is
 [docs/architecture.md](docs/architecture.md#who-decides-what); how the numbers are produced is
 [docs/artifacts.md](docs/artifacts.md#estimate-blocks-and-pricing).
-
-## 🏷️ Status
-
-Published on [npm](https://www.npmjs.com/package/funky-forge): GitHub Actions staged it over OIDC
-from the tag and a maintainer approved it with 2FA, so the tarball carries SLSA provenance
-([the contract](docs/release.md)). The method was validated end to end on two projects before any CLI
-code existed ([evidence](docs/validation/project-a.md)); the CLI is covered by tests and has no
-runtime dependencies.
 
 ## 🧰 Requirements
 
