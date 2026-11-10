@@ -1,0 +1,84 @@
+# The method pack declares the package version
+
+Feature document for issue 25. The issue is the specification of record; this file records the
+decisions that refine it, the task order, and the evidence. When in doubt, reread the issue and
+`rfcs/02-method-pack-version.md`.
+
+## Specs
+
+- **S1 — Version is the package's.** The skill is bound to the package version, because the pack
+  ships inside the tarball and travels with the binary. `method_version: 1` in
+  `skill/references/00-map.md` and the four templates is the protocol's clock and does not change.
+- **S2 — One declaration, guarded.** `skill/SKILL.md`'s frontmatter carries `version:` equal to
+  `package.json`'s, and a test fails naming both files and both numbers when they disagree. Verbatim
+  from the issue: "`skill/SKILL.md`'s frontmatter version must equal `package.json`'s, with a failure
+  message naming both files and both numbers."
+- **S3 — Four outcomes.** Verbatim from the issue: "no copy → installs; same version, identical
+  bytes → reports `Current`, writes nothing, exits 0; same version, different bytes → names it as
+  local changes on that version and asks before replacing; with no terminal it refuses with a
+  `reason:` naming the path, the version and the fact that stdin is not a terminal; a different
+  version → names both versions and offers to replace; a copy **newer** than the binary is refused
+  with a reason, because the installed protocol cannot be older than its validator."
+- **S4 — Forge's exit codes, not secure's.** Verbatim: "forge uses `2` for 'a decision that needs
+  the human' and `1` for a failure, where secure uses `3` for a refusal. The mapping has to follow
+  forge's own contract, not secure's numbers."
+- **S5 — Ask on a terminal.** User verbatim: "Preguntar en terminal, como funky-secure". Answer
+  tokens `1`/`2`, default `1` (keep), question on stderr, answer read from stdin.
+- **S6 — One state, two surfaces.** User verbatim: "Un solo lugar que calcule el estado, dos que lo
+  muestran." The diagnosis lives in `install` and in `--check`; `--check` keeps `0` in sync and `1`
+  on divergence and only changes what it prints. `--json` reads the same state. Tone per user
+  verbatim: "install en una copia limpia imprime una línea: `Installed · <ruta> (0.1.0)`",
+  "`install --check` imprime siempre el estado y la versión", "install solo despliega las cuatro
+  variantes cuando tiene que decidir o negarse."
+- **S7 — A newer copy keeps secure's answer.** User verbatim: "sigue funky secure": refused outright,
+  never a question, with the action that resolves it, and `--force` performs the downgrade.
+- **S8 — `--version` reads the manifest.** User verbatim: "Sí, mismo commit con su test." The literal
+  `funky-forge 0.1.0` in `src/cli.js` is the same clock and is fixed in the same commit as S2.
+- **S9 — Unchanged surface.** `--target`, `--dry-run`, `--with-pointer`, `--force`, `--check`,
+  `--json` keep their meaning; `install` still writes only inside the target skill directory, the
+  pointer stays one-shot, and the `files` contract does not change. `portfolio-npm-launch.md` stays
+  untracked and is never read, edited, or committed.
+
+## Tasks
+
+| ID | Task | Specs | Route | Commit |
+|---|---|---|---|---|
+| T1 | Record the contract: `rfcs/02-method-pack-version.md`, plus a dated `## Errata` in RFC 1 for §6.2 and §13.1 | S1-S8 | inline (docs) | `docs(rfc): record the method pack's version contract` |
+| T2 | Declare the version once and compare it: `version:` in `skill/SKILL.md`, pure `src/lib/pack-version.js` (`readDeclaredVersion`, `compareVersions`, `packState`), `--version` from the manifest, the two guards | S2, S6, S8 | inline | `feat(install): declare the pack version and compare it` |
+| T3 | `install` acts on the state and asks on a terminal: four outcomes, async ripple, `--check`/`--json`/`--dry-run` from the one state, prompt and non-TTY refusal, docs (`docs/cli.md`, `docs/architecture.md`) | S3, S4, S5, S6, S7, S9 | inline | `feat(install): tell a stale pack from a current one and ask before replacing` |
+| T4 | Close: `node --test` and `npm run pack:check` green on Windows, log the evidence | all | inline | — |
+
+## Log
+
+- **L1 — user, verbatim.** "revisa el issue 25, debemos implementarlo ahora. Ignora el file
+  portfolio-npm-launch, se queda untracked."
+- **L2 — user, verbatim, on the divergence question.** "Preguntar en terminal, como funky-secure".
+  Chosen over "sin preguntar: sale 2 con la acción exacta", so `install` becomes async and
+  `docs/cli.md`'s `Never prompts` guarantee has to be restated as "never prompts without a terminal".
+- **L3 — user, verbatim, on where the diagnosis lives.** "Por qué --check ya es el modo de solo
+  lectura de install. No es un comando ajeno que se suma: es el flag que hace que install no escriba.
+  --dry-run imprime el plan, --check informa divergencia. Que el diagnóstico de versión viva ahí no
+  agranda su contrato, lo completa: hoy dice «faltan o difieren estos archivos», y le falta la mitad
+  de la respuesta, que es de qué versión son los que hay. … La condición Un solo lugar que calcule el
+  estado, dos que lo muestran. … install en una copia limpia imprime una línea: Installed · <ruta>
+  (0.1.0). install --check imprime siempre el estado y la versión. install solo despliega las cuatro
+  variantes cuando tiene que decidir o negarse." Also: "Sobre method_version, nada que decir: queda
+  como está, es el reloj del protocolo y no se mezcla con esto."
+- **L4 — user, verbatim, on a newer installed copy.** "sigue funky secure". Secure refuses without
+  asking; in forge's contract a refusal that no answer can change is exit `1`, and `--force` is the
+  documented way to accept the downgrade.
+- **L5 — user, verbatim, on `--version`.** "Sí, mismo commit con su test."
+- **L6 — evidence, exploration.** `docs/cli.md:92` guarantees `Never prompts` and
+  `docs/architecture.md:104` guarantees `No prompts. The CLI never reads stdin`; both must be
+  restated, not deleted, because `check`, `calc`, and `init` still never read stdin.
+  `tests/skill.test.js:69` asserts the frontmatter keys are exactly `['name','description']`, so the
+  `version:` line breaks it by construction and changes in the same commit.
+  `install()` is synchronous and in-process in the whole suite (`tests/install.test.js:20`), so the
+  prompt makes `install`, `dispatch`, `main`, `bin/funky-forge.js`, and `tests/cli.test.js`'s `run()`
+  async.
+- **L7 — decision, granularity.** The pack is 18 files, so the state is computed once for the pack:
+  `SKILL.md` missing or the destination absent → `absent`; every shipped file present and byte-equal
+  → `identical`; otherwise the installed `SKILL.md`'s version is compared with the shipped one →
+  `older`/`newer`/`edited`, and `unversioned` when either side declares none. The version is read
+  from the bytes, as `funky-secure` does, never from the local `package.json`: a copy that travelled
+  by hand still says what it is.

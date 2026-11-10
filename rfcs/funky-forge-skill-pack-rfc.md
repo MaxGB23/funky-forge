@@ -1477,3 +1477,32 @@ market_references:
 This RFC deliberately removes more than it adds. The value of funky-forge is not the number of
 documents it can generate; it is the discipline of four phases, an independent second opinion,
 and a price that can be explained line by line. Everything else is optional.
+
+---
+
+## Errata
+
+Append-only corrections to a settled RFC. Each entry names the section it corrects, the date, and the
+record that supersedes it. The body above is not rewritten.
+
+### 2026-11-10 — the pack declares its version (§6.2, §7.2, §13.1)
+
+Superseded by `rfcs/02-method-pack-version.md`, which issue
+[#25](https://github.com/MaxGB23/funky-forge/issues/25) accepted.
+
+- **§6.2** said a file that differs from the shipped one is a fork, refused unless `--force`. That
+  conflates three states that need different answers: a file the user edited on the version they
+  installed, a copy that came from an older release, and a copy that came from a newer one. The third
+  is not a fork but a validator older than its protocol, and it is now refused with both versions
+  named. Replacing an older or edited copy is still refused without `--force`, but the refusal is a
+  question (exit `2`) when a terminal is available, and the copy from an older release no longer needs
+  `--force` to be offered the current one.
+- **§7.2**, the `SKILL.md` outline, showed a frontmatter with `name` and `description`. It also carries
+  `version:`, equal to `package.json`'s, guarded by a test that names both files and both numbers.
+  `method_version: 1` is a different clock and is unchanged.
+- **§13.1** listed `0` success, `1` error or refused overwrite, `2` `TARGET_AMBIGUOUS`. The `1` for a
+  refused overwrite becomes `2`, because a differing copy is a decision rather than a failure; a copy
+  newer than the binary stays `1`, since no answer changes it. `install` now reads stdin when it is a
+  terminal, so the "no prompts" property of §6.2 holds only for a caller without one: it then receives
+  a `reason:` and an exit code instead of a question. `--version` reads the manifest instead of
+  printing a literal.
