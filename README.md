@@ -14,7 +14,7 @@ review, and a human decision — instead of a spreadsheet nobody remembers build
 
 ```sh
 npm install --global funky-forge   # npm ships with Node; pnpm add --global funky-forge also works
-funky-forge install             # copies the method into your harness skill directory
+funky-forge install                # run inside your project; creates .agents/skills/funky-forge/
 ```
 
 Zero dependencies, nothing to build. The second line is what lets an agent run the method.
@@ -75,7 +75,8 @@ How a phase runs — gates, depth, verdicts, approval and staleness — is
 
 ## 🧰 Requirements
 
-Node.js 22 or newer. Nothing to build, and nothing to install at runtime.
+Node.js 22 or newer is enough to run it, with nothing to build and nothing to install at runtime.
+pnpm is needed only to work on it: `pnpm test` and `pnpm pack --dry-run`.
 
 ## 🔒 Supply chain
 
@@ -96,7 +97,7 @@ tune it: [docs/cli.md](docs/cli.md#package-manager).
 
 ```sh
 npm install --global funky-forge   # npm ships with Node; pnpm add --global funky-forge also works
-funky-forge install               # inside the project you want to plan
+funky-forge install                # inside the project you want to plan
 funky-forge init
 ```
 
@@ -107,6 +108,7 @@ funky-forge init
 | Pi / Gentle Shell, OpenCode, Codex, Antigravity CLI... | `.agents/skills/funky-forge/` | `--target agents` |
 | Claude Code | `.claude/skills/funky-forge/` | `--target claude` |
 
+`--with-pointer` also appends one marked block to `AGENTS.md` (shared) or `CLAUDE.md` (Claude).
 Detection is automatic. When both harness markers exist the command refuses to guess, exits `2` with
 `TARGET_AMBIGUOUS`, and prints the exact `--target` to use. To run from a clone instead:
 
@@ -122,7 +124,9 @@ funky-forge init --language en --proposal-language es
 # ... write .funky-forge/brief.md, then:
 funky-forge check problem              # must pass before the gate
 funky-forge check problem --json       # bodyHash, errors, warnings
-funky-forge calc --write               # rewrite the estimate table
+# ... write .funky-forge/design.md and approve it, then:
+funky-forge check design               # estimate depends on an approved design
+funky-forge calc --write               # needs assumptions.hourly_rate and the first work blocks
 funky-forge check estimate --strict
 ```
 
