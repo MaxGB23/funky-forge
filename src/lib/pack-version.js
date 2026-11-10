@@ -52,16 +52,17 @@ export function compareVersions(left, right) {
 /**
  * The one verdict every surface shows.
  *
- * Byte identity is decided before the version, because two identical packs cannot disagree about
- * anything. A pack whose version cannot be read is a question rather than an error: the copies that
- * `0.1.0` installed carry no version line, and accusing their owners of an edit they did not make
- * would be the wrong answer to the right observation.
- * @param {{present: boolean, identical: boolean, installedVersion: string | null, shippedVersion: string | null}} found
- * @returns {'absent' | 'identical' | 'older' | 'newer' | 'edited' | 'unversioned'}
+ * `identical` means every file that is present matches the shipped bytes, and `missing` counts the ones
+ * that are not there. Missing files are not divergence: an interrupted copy is `incomplete`, and
+ * completing it is what `install` is for, so neither asks. A pack whose version cannot be read is a
+ * question rather than an error: the copies that `0.1.0` installed carry no version line, and accusing
+ * their owners of an edit they did not make would be the wrong answer to the right observation.
+ * @param {{present: boolean, identical: boolean, missing?: number, installedVersion: string | null, shippedVersion: string | null}} found
+ * @returns {'absent' | 'identical' | 'incomplete' | 'older' | 'newer' | 'edited' | 'unversioned'}
  */
-export function packState({ present, identical, installedVersion, shippedVersion }) {
+export function packState({ present, identical, missing = 0, installedVersion, shippedVersion }) {
   if (!present) return 'absent';
-  if (identical) return 'identical';
+  if (identical) return missing > 0 ? 'incomplete' : 'identical';
   if (installedVersion === null || shippedVersion === null) return 'unversioned';
   const order = compareVersions(installedVersion, shippedVersion);
   if (order < 0) return 'older';

@@ -209,7 +209,7 @@ test('a copy newer than the binary is refused without asking, because no answer 
   const skill = join(dir, DESTINATION, 'SKILL.md');
   const before = await readFile(skill, 'utf8');
 
-  const refused = await run(dir, {}, { stdin: terminal('2') });
+  const refused = await run(dir, {}, { stdin: terminal('2'), interactive: true });
   assert.equal(refused.code, 1, 'a validator cannot accept a protocol newer than itself');
   assert.match(refused.err, /NEWER_PACK/);
   assert.match(refused.err, /is version 0\.2\.0/);
@@ -243,7 +243,7 @@ test('a terminal asks in one place, and key 1 keeps the copy', async () => {
   assert.equal((await run(dir)).code, 0);
   await editedLocally(dir);
 
-  const kept = await run(dir, {}, { stdin: terminal('1') });
+  const kept = await run(dir, {}, { stdin: terminal('1'), interactive: true });
   assert.equal(kept.code, 0);
   assert.match(kept.err, new RegExp(`funky-forge install: replace ${DESTINATION.replaceAll('.', '\\.')}\\?`));
   assert.match(kept.err, /installed: version .* with local changes/);
@@ -259,7 +259,7 @@ test('a terminal asks in one place, and key 2 replaces the copy', async () => {
   assert.equal((await run(dir)).code, 0);
   await editedLocally(dir);
 
-  const replaced = await run(dir, {}, { stdin: terminal('2') });
+  const replaced = await run(dir, {}, { stdin: terminal('2'), interactive: true });
   assert.equal(replaced.code, 0);
   assert.ok(replaced.out.includes(`Replaced · ${DESTINATION}`), replaced.out);
   assert.doesNotMatch(await readFile(join(dir, DESTINATION, 'SKILL.md'), 'utf8'), /my note/);
@@ -271,7 +271,7 @@ test('an answer that is neither key is asked again, and a terminal that gives up
   assert.equal((await run(dir)).code, 0);
   await editedLocally(dir);
 
-  const kept = await run(dir, {}, { stdin: terminal('maybe', '3', 'later') });
+  const kept = await run(dir, {}, { stdin: terminal('maybe', '3', 'later'), interactive: true });
   assert.equal(kept.code, 0);
   assert.equal((kept.err.match(/choose 1 or 2 \[1\]:/g) ?? []).length, 3, kept.err);
   assert.ok(kept.out.includes(`Kept · ${DESTINATION}`), kept.out);
@@ -311,7 +311,7 @@ test('--dry-run prints the plan and the state, writes nothing, and never asks', 
   const skill = join(dir, DESTINATION, 'SKILL.md');
   const before = await readFile(skill, 'utf8');
 
-  const plan = await run(dir, { 'dry-run': true }, { stdin: terminal('2') });
+  const plan = await run(dir, { 'dry-run': true }, { stdin: terminal('2'), interactive: true });
   assert.equal(plan.code, 0);
   assert.ok(plan.out.includes(`Older · ${DESTINATION} (installed 0.0.9, this binary ships ${SHIPPED})`), plan.out);
   assert.match(plan.out, /Would install/);
@@ -393,7 +393,7 @@ test('--json keeps stdout parseable when the answer is to keep the copy', async 
   assert.equal((await run(dir)).code, 0);
   await editedLocally(dir);
 
-  const kept = await run(dir, { json: true }, { stdin: terminal('1') });
+  const kept = await run(dir, { json: true }, { stdin: terminal('1'), interactive: true });
   assert.equal(kept.code, 0);
   const payload = JSON.parse(kept.out);
   assert.equal(payload.state, 'edited');
@@ -449,5 +449,79 @@ test('--json on a Claude target reports the detected destination', async () => {
   assert.equal(payload.target, 'claude');
   assert.equal(payload.destination, '.claude/skills/funky-forge');
   assert.match(detected.err, /Detected: Claude Code/);
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('an empty destination directory is a place to install into, not a copy to interrogate', async () => {
+  const dir = await project();
+  await mkdir(join(dir, DESTINATION), { recursive: true });
+
+  const installed = await run(dir);
+  assert.equal(installed.code, 0);
+  assert.ok(installed.out.includes(`Installed · ${DESTINATION} (${SHIPPED})`), installed.out);
+  for (const file of SKILL_FILES) assert.ok(existsSync(join(dir, DESTINATION, file)), file);
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('an interrupted copy is completed without asking, because missing files are not divergence', async () => {
+  const dir = await project();
+  assert.equal((await run(dir)).code, 0);
+  await rm(join(dir, DESTINATION, 'templates/estimate.md'));
+  await rm(join(dir, DESTINATION, 'references/00-map.md'));
+
+  const completed = await run(dir);
+  assert.equal(completed.code, 0, 'a half-copied pack must heal without --force');
+  assert.ok(completed.out.includes(`Completed · ${DESTINATION} (${SHIPPED}, 2 file(s) added)`), completed.out);
+  assert.ok(existsSync(join(dir, DESTINATION, 'templates/estimate.md')));
+  assert.ok(existsSync(join(dir, DESTINATION, 'references/00-map.md')));
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('a half-copied pack whose present files were edited is a question, not a heal', async () => {
+  const dir = await project();
+  assert.equal((await run(dir)).code, 0);
+  await rm(join(dir, DESTINATION, 'templates/estimate.md'));
+  await editedLocally(dir);
+
+  const refused = await run(dir);
+  assert.equal(refused.code, 2);
+  assert.match(refused.err, /local changes on version/);
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('keeping the copy still honors --with-pointer, which was asked for independently', async () => {
+  const dir = await project();
+  await writeFile(join(dir, 'AGENTS.md'), '# rules\n', 'utf8');
+  assert.equal((await run(dir)).code, 0);
+  await editedLocally(dir);
+
+  const kept = await run(dir, { 'with-pointer': true }, { confirm: () => false });
+  assert.equal(kept.code, 0);
+  assert.ok(kept.out.includes(`Kept · ${DESTINATION}`), kept.out);
+  assert.match(await readFile(join(dir, 'AGENTS.md'), 'utf8'), /<!-- funky-forge -->/);
+  assert.match(await readFile(join(dir, DESTINATION, 'SKILL.md'), 'utf8'), /my note/);
+
+  const json = await project();
+  await writeFile(join(json, 'AGENTS.md'), '# rules\n', 'utf8');
+  assert.equal((await run(json)).code, 0);
+  await editedLocally(json);
+  const payload = JSON.parse((await run(json, { json: true, 'with-pointer': true }, { confirm: () => false })).out);
+  assert.equal(payload.pointer, 'AGENTS.md');
+  assert.equal(payload.written, 0);
+  assert.equal(payload.state, 'edited');
+  await rm(dir, { recursive: true, force: true });
+  await rm(json, { recursive: true, force: true });
+});
+
+test('a terminal stdin with an unwritten stderr refuses instead of waiting for an invisible answer', async () => {
+  const dir = await project();
+  assert.equal((await run(dir)).code, 0);
+  await editedLocally(dir);
+
+  const refused = await run(dir, {}, { stdin: terminal('2'), interactive: false });
+  assert.equal(refused.code, 2);
+  assert.match(refused.err, /stderr is not a terminal, so the question could not be shown/);
+  assert.doesNotMatch(refused.err, /choose 1 or 2/);
+  assert.match(await readFile(join(dir, DESTINATION, 'SKILL.md'), 'utf8'), /my note/);
   await rm(dir, { recursive: true, force: true });
 });

@@ -59,3 +59,8 @@ test('a copy that declares no version cannot be ordered against one that does', 
   assert.equal(packState({ present: true, identical: false, installedVersion: null, shippedVersion: '0.1.0' }), 'unversioned');
   assert.equal(packState({ present: true, identical: false, installedVersion: '0.1.0', shippedVersion: null }), 'unversioned');
 });
+
+test('missing files are incomplete, not a divergence, and never hide a differing one', () => {
+  assert.equal(packState({ present: true, identical: true, missing: 2, installedVersion: '0.1.0', shippedVersion: '0.1.0' }), 'incomplete');
+  assert.equal(packState({ present: true, identical: false, missing: 2, installedVersion: '0.1.0', shippedVersion: '0.1.0' }), 'edited');
+});

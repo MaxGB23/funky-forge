@@ -86,30 +86,34 @@ function inspect(cwd, skillsDir) {
   });
 
   const skill = join(cwd, skillsDir, SKILL_DIR_NAME, 'SKILL.md');
-  // The unit that has a version is the pack, so presence is the directory: a pack with files but no
-  // SKILL.md has no version to read, and calling it absent would overwrite an edit without asking.
-  const present = existsSync(join(cwd, skillsDir, SKILL_DIR_NAME));
-  const identical = entries.every((entry) => entry.status === 'same');
+  // Presence is whether any shipped file is there, not whether the directory is: a directory created
+  // by hand with nothing in it is a place to install into. Missing files are not divergence either,
+  // so an interrupted copy is completed instead of being treated as someone's edit.
+  const present = entries.some((entry) => entry.status !== 'new');
+  // `identical` is "nothing that is present differs"; `missing` says how much is not there yet.
+  const identical = entries.every((entry) => entry.status !== 'modified');
   const installedVersion = existsSync(skill) ? readDeclaredVersion(readFileSync(skill, 'utf8')) : null;
   const shippedVersion = readDeclaredVersion(readFileSync(join(SKILL_SOURCE, 'SKILL.md'), 'utf8'));
+  const missing = entries.filter((entry) => entry.status === 'new');
 
   return {
     destination,
     entries,
-    missing: entries.filter((entry) => entry.status === 'new'),
+    missing,
     modified: entries.filter((entry) => entry.status === 'modified'),
     unchanged: entries.filter((entry) => entry.status === 'same'),
     installedVersion,
     shippedVersion,
-    state: packState({ present, identical, installedVersion, shippedVersion }),
+    state: packState({ present, identical, missing: missing.length, installedVersion, shippedVersion }),
   };
 }
 
 /** One line that says which state the copy is in and which version is involved, in every case. */
 function stateLine(found) {
-  const { destination, state, installedVersion, shippedVersion, modified } = found;
+  const { destination, state, installedVersion, shippedVersion, missing, modified } = found;
   if (state === 'absent') return `Absent · ${destination} (ships ${shippedVersion})`;
   if (state === 'identical') return `Current · ${destination} (${shippedVersion})`;
+  if (state === 'incomplete') return `Incomplete · ${destination} (${shippedVersion}, ${missing.length} file(s) missing)`;
   if (state === 'edited') return `Edited · ${destination} (${installedVersion}, ${modified.length} file(s) differ)`;
   if (state === 'unversioned') return `Unversioned · ${destination} (the copy declares none, this binary ships ${shippedVersion})`;
   return `${state === 'older' ? 'Older' : 'Newer'} · ${destination} (installed ${installedVersion}, this binary ships ${shippedVersion})`;
@@ -127,6 +131,13 @@ function difference(found) {
   if (found.state === 'edited') return `it carries local changes on version ${found.installedVersion}`;
   if (found.state === 'unversioned') return 'it declares no version line, so where it came from cannot be told';
   return `it is version ${found.installedVersion} and this binary ships ${found.shippedVersion}`;
+}
+
+/** Why the question stayed unasked, in the words of whichever end is missing a terminal. */
+function notAskedReason(found, stdin) {
+  const missing =
+    stdin?.isTTY === true ? 'stderr is not a terminal, so the question could not be shown' : 'stdin is not a terminal';
+  return `cannot ask whether to replace ${found.destination}: ${difference(found)}, and ${missing}`;
 }
 
 function questionLines(found) {
@@ -197,10 +208,11 @@ async function askToReplace({ found, stdin, err }) {
 
 /**
  * @param {{cwd?: string, flags?: Record<string, string | boolean>, stdout?: (line: string) => void,
- *   stderr?: (line: string) => void, stdin?: NodeJS.ReadStream, confirm?: () => boolean | Promise<boolean>}} [options]
+ *   stderr?: (line: string) => void, stdin?: NodeJS.ReadStream, confirm?: () => boolean | Promise<boolean>,
+ *   interactive?: boolean}} [options]
  * @returns {Promise<number>} the exit code
  */
-export async function install({ cwd = process.cwd(), flags = {}, stdout, stderr, stdin, confirm } = {}) {
+export async function install({ cwd = process.cwd(), flags = {}, stdout, stderr, stdin, confirm, interactive } = {}) {
   const out = (line) => (stdout ? stdout(line) : process.stdout.write(`${line}\n`));
   const err = (line) => (stderr ? stderr(line) : process.stderr.write(`${line}\n`));
   // `--json` owns stdout: a caller parses stdout, so progress notices belong on stderr.
@@ -280,39 +292,38 @@ export async function install({ cwd = process.cwd(), flags = {}, stdout, stderr,
     return 1;
   }
 
-  const sure = found.state === 'absent' || found.state === 'identical';
+  const sure = found.state === 'absent' || found.state === 'identical' || found.state === 'incomplete';
   let replace = !sure && flags.force === true;
+  let kept = false;
 
   if (!sure && !flags.force) {
+    // The question goes to stderr, so a redirected stderr would hide it while the process waits for an
+    // answer nobody can see. Ask only when both ends are a terminal, or when a caller says it shows it.
+    const visible = typeof interactive === 'boolean' ? interactive : Boolean(process.stderr.isTTY);
     const decide =
       typeof confirm === 'function'
         ? confirm
-        : stdin?.isTTY
+        : stdin?.isTTY === true && visible
           ? () => askToReplace({ found, stdin, err })
           : null;
     if (decide === null) {
       err(`PACK_NOT_ASKED: ${found.destination} needs an answer (exit 2)`);
-      err(`  reason: cannot ask whether to replace ${found.destination}: ${difference(found)}, and stdin is not a terminal`);
+      err(`  reason: ${notAskedReason(found, stdin)}`);
       err('  Re-run with --force to replace it, or leave the copy as it is.');
       return 2;
     }
     replace = await decide();
-    if (!replace) {
-      if (flags.json) {
-        out(payload({ written: 0, pointer: null }));
-        return 0;
-      }
-      notice(`Kept · ${found.destination} (${copyVersion(found)})`);
-      return 0;
-    }
+    kept = !replace;
   }
 
-  mkdirSync(join(cwd, spec.skillsDir, SKILL_DIR_NAME), { recursive: true });
-  for (const entry of found.entries) {
-    if (entry.status === 'same') continue;
-    const file = join(cwd, spec.skillsDir, SKILL_DIR_NAME, entry.file);
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, readFileSync(join(SKILL_SOURCE, entry.file)));
+  if (!kept) {
+    mkdirSync(join(cwd, spec.skillsDir, SKILL_DIR_NAME), { recursive: true });
+    for (const entry of found.entries) {
+      if (entry.status === 'same') continue;
+      const file = join(cwd, spec.skillsDir, SKILL_DIR_NAME, entry.file);
+      mkdirSync(dirname(file), { recursive: true });
+      writeFileSync(file, readFileSync(join(SKILL_SOURCE, entry.file)));
+    }
   }
 
   let pointerAdded = false;
@@ -327,20 +338,19 @@ export async function install({ cwd = process.cwd(), flags = {}, stdout, stderr,
   if (flags.json) {
     out(
       payload({
-        written: found.missing.length + (replaced ? found.modified.length : 0),
+        written: kept ? 0 : found.missing.length + (replaced ? found.modified.length : 0),
         pointer: pointerAdded ? spec.pointer : null,
       }),
     );
     return 0;
   }
 
-  if (found.state === 'identical') {
-    notice(stateLine(found));
-  } else if (found.state === 'absent') {
-    notice(`Installed · ${found.destination} (${found.shippedVersion})`);
-  } else {
-    notice(`Replaced · ${found.destination} (${found.shippedVersion}, was ${copyVersion(found)})`);
-  }
+  if (kept) notice(`Kept · ${found.destination} (${copyVersion(found)})`);
+  else if (found.state === 'identical') notice(stateLine(found));
+  else if (found.state === 'absent') notice(`Installed · ${found.destination} (${found.shippedVersion})`);
+  else if (found.state === 'incomplete')
+    notice(`Completed · ${found.destination} (${found.shippedVersion}, ${found.missing.length} file(s) added)`);
+  else notice(`Replaced · ${found.destination} (${found.shippedVersion}, was ${copyVersion(found)})`);
   if (pointerAdded) notice(`Pointer appended to ${spec.pointer}.`);
   return 0;
 }

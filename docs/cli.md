@@ -30,7 +30,7 @@ funky-forge --version
 | Divergent copy | An older copy, a copy with local changes on the version it declares, or one that declares no version is a decision. On a terminal `install` asks: `1` keeps the copy (the default), `2` replaces it. Without a terminal it exits `2` with a `reason:` naming the path, the versions and the fact that stdin is not a terminal. `--force` replaces without asking |
 | Newer copy | Refused with exit `1`, both versions named: an installed protocol cannot be older than its validator. `--force` performs the downgrade |
 | Pointer | `--with-pointer` appends one marked block to `AGENTS.md` (shared) or `CLAUDE.md` (Claude) and refuses a second (`POINTER_EXISTS`) |
-| `--check` | Prints the state and the version in every case and writes nothing: `0` when the copy is current, `1` when it is absent, older, newer, edited or unversioned |
+| `--check` | Prints the state and the version in every case and writes nothing: `0` when the copy is current, `1` when it is absent, incomplete, older, newer, edited or unversioned |
 | `--dry-run` | Prints the state and the plan, writes nothing, and never asks |
 
 `--json` prints one object, and the notices go to stderr:
@@ -48,9 +48,11 @@ funky-forge --version
 }
 ```
 
-`state` is one of `absent`, `identical`, `older`, `newer`, `edited` (same version, different bytes) or
-`unversioned`. The version is read from the installed `SKILL.md`, never from the local `package.json`, so
-a copy that travelled by hand still says what it is.
+`state` is one of `absent`, `identical`, `incomplete` (files missing, none of the present ones
+differing), `older`, `newer`, `edited` (same version, different bytes) or `unversioned`. Missing files
+are completed without asking (`Completed · … (0.1.0, 2 file(s) added)`): an interrupted copy is not
+divergence. The version is read from the installed `SKILL.md`, never from the local `package.json`, so a
+copy that travelled by hand still says what it is.
 
 ### `init`
 
