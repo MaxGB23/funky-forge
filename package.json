@@ -31,9 +31,13 @@
   "keywords": [
     "planning",
     "estimation",
+    "quoting",
     "proposal",
+    "scoping",
     "agent-skills",
-    "cli"
+    "cli",
+    "funky",
+    "funky-forge"
   ],
   "repository": {
     "type": "git",
