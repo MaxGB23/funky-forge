@@ -43,10 +43,10 @@ decisions that refine it, the task order, and the evidence. When in doubt, rerea
 
 | ID | Task | Specs | Route | Commit |
 |---|---|---|---|---|
-| T1 | Record the contract: `rfcs/02-method-pack-version.md`, plus a dated `## Errata` in RFC 1 for §6.2 and §13.1 | S1-S8 | inline (docs) | `docs(rfc): record the method pack's version contract` |
-| T2 | Declare the version once and compare it: `version:` in `skill/SKILL.md`, pure `src/lib/pack-version.js` (`readDeclaredVersion`, `compareVersions`, `packState`), `--version` from the manifest, the two guards | S2, S6, S8 | inline | `feat(install): declare the pack version and compare it` |
-| T3 | `install` acts on the state and asks on a terminal: four outcomes, async ripple, `--check`/`--json`/`--dry-run` from the one state, prompt and non-TTY refusal, docs (`docs/cli.md`, `docs/architecture.md`) | S3, S4, S5, S6, S7, S9 | inline | `feat(install): tell a stale pack from a current one and ask before replacing` |
-| T4 | Close: `node --test` and `npm run pack:check` green on Windows, log the evidence | all | inline | — |
+| T1 | Record the contract: `rfcs/02-method-pack-version.md`, plus a dated `## Errata` in RFC 1 for §6.2 and §13.1 | S1-S8 | inline (docs) | `19005f9` |
+| T2 | Declare the version once and compare it: `version:` in `skill/SKILL.md`, pure `src/lib/pack-version.js` (`readDeclaredVersion`, `compareVersions`, `packState`), `--version` from the manifest, the two guards | S2, S6, S8 | inline | `9be903a` |
+| T3 | `install` acts on the state and asks on a terminal: four outcomes, async ripple, `--check`/`--json`/`--dry-run` from the one state, prompt and non-TTY refusal, docs (`docs/cli.md`, `docs/architecture.md`, `README.md`, `skill/SKILL.md`, `src/lib/errors.js`) | S3, S4, S5, S6, S7, S9 | inline | `273d572` |
+| T4 | Close: `node --test` and `npm run pack:check` green, one differential check over the commands the diff did not name, evidence logged | all | inline | — |
 
 ## Log
 
@@ -82,3 +82,31 @@ decisions that refine it, the task order, and the evidence. When in doubt, rerea
   `older`/`newer`/`edited`, and `unversioned` when either side declares none. The version is read
   from the bytes, as `funky-secure` does, never from the local `package.json`: a copy that travelled
   by hand still says what it is.
+- **L8 — evidence, T2 (`9be903a`).** `tests/skill.test.js` now asserts the keys
+  `['name','description','version']` and, separately, that the frontmatter version equals
+  `package.json`'s with a message naming both numbers. `tests/pack-version.test.js` (10 cases) covers
+  the reading, the ordering (`0.2.0 < 0.10.0`, `0.1 == 0.1.0`, a prerelease keeps its release) and
+  every state transition. RED observed twice before the code existed: the key list, then
+  `ERR_MODULE_NOT_FOUND` for the new library. `--version` reads `package.json` through
+  `import.meta.url`; its test is a pin rather than a RED, because the literal it replaced happened to
+  equal the manifest — its value is the bump that used to go unnoticed.
+- **L9 — evidence, T3 (`273d572`).** 18 cases in `tests/install.test.js` (14 RED before the command
+  changed): one line for a clean install, `Current` on a second run with the file's `mtime` unchanged,
+  the non-TTY refusal for `edited`/`older`/`unversioned`, both prompt answers, three invalid answers
+  falling back to keep, the `newer` refusal that asks nothing even with a terminal attached, and
+  `--check`/`--dry-run`/`--json` reading the same state. A real terminal was proved through a stream
+  with `isTTY = true`; a naive `rl.question()` lost the answer typed before the question was
+  registered, so answers are queued (`readLines`) instead of raced.
+- **L10 — evidence, T4.** `node --test`: 201 tests, 201 pass, 0 fail. `node scripts/pack-guard.js`: 39
+  packed files against 6 `files` entries, unchanged. Differential check over the commands this issue
+  did not name, since `src/cli.js` changed: `--help`, `init`, `init --help`, `init --json`,
+  `check design`, `check --help`, `calc`, `calc --help`, `calc --json` and an unknown command, run
+  against the base commit (`3865b8f`) and against this branch, compared on stdout, stderr and exit
+  code. All identical. The check earned its place: it caught that `--force` shares one `FLAG_SPECS`
+  entry with `init`, so install's new wording leaked into `init --help`; the summary was restored to
+  the base string and `init`'s help is byte-identical again. Follow-up, not fixed here: that shared
+  summary ("overwrite files that differ from the shipped pack") still describes `install` on
+  `init --help`, a pre-existing overlap this issue does not own.
+- **L11 — handoff.** Three commits on `feat/method-pack-version`, not pushed. Push, pull request and
+  merge stay the maintainer's decision; the PR body should carry `Closes #25` and the `type:feature`
+  label, both already on the issue.
