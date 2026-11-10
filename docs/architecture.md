@@ -15,7 +15,9 @@ and no hidden state.
 | Gate reports | `.funky-forge/gates/*.md` | A review happened | The CLI, and whoever audits the decision |
 
 `install` copies the first layer into a harness skill directory. The other three are created per
-project by `init` and written by the agent.
+project by `init` and written by the agent. Because the pack travels inside the tarball, it declares
+the package version in its own frontmatter, and `install` compares the copy on disk against the one it
+ships: that is how a stale pack becomes visible instead of silently wrong.
 
 ## Data flow
 
@@ -99,13 +101,14 @@ tests can exercise them without a filesystem. `src/commands` holds all the effec
 
 1. **One command only reads.** `check` never writes; there is no `--fix`. A validator that mutates
    state can revoke approvals silently.
-2. **Two writers, both bounded.** `install` writes only inside the target skill directory, refuses
-   to overwrite a modified file without `--force`, and touches `AGENTS.md`/`CLAUDE.md` only with
+2. **Two writers, both bounded.** `install` writes only inside the target skill directory, replaces a
+   copy that differs only after an answer or `--force`, and touches `AGENTS.md`/`CLAUDE.md` only with
    `--with-pointer`. `calc --write` rewrites only the region between the calc markers.
 3. **The hash is the approval.** `approved_hash` is the SHA-256 of the normalized body, so an edit
    after approval is detectable without trusting anyone's memory.
-4. **No prompts.** The CLI never reads stdin, so an agent can call it with no terminal. A decision
-   it cannot make becomes exit code `2`.
+4. **One question, and only with a terminal.** `install` reads stdin only when it is a terminal,
+   because replacing a copy a human may own is their call. With no terminal it prints a `reason:` and
+   exits `2` instead, so an agent never hangs. `check`, `calc` and `init` never read stdin at all.
 5. **Fixed paths.** Phases map to file names that are not configurable, so two projects never
    disagree about where a decision lives.
 

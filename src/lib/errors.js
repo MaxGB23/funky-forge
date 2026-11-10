@@ -1,6 +1,7 @@
 /**
- * Error shape and exit codes. The CLI never prompts and never exits 0 on a failed gate:
- * `0` success, `1` failure, `2` a decision the agent must resolve with the human.
+ * Error shape and exit codes. The CLI never exits 0 on a failed gate, and it reads stdin only in
+ * `install`, only when stdin is a terminal, to ask whether to replace a copy: `0` success, `1` failure,
+ * `2` a decision the agent must resolve with the human.
  */
 
 export const EXIT = Object.freeze({ OK: 0, ERROR: 1, NEEDS_DECISION: 2 });

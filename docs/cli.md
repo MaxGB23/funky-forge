@@ -1,7 +1,8 @@
 # CLI reference
 
-Four commands, no prompts, no dependencies. Exit codes: `0` pass, `1` failure, `2` a decision only
-the human can make.
+Four commands, no dependencies. Exit codes: `0` pass, `1` failure, `2` a decision only the human
+can make. `install` asks one question on a terminal; with no terminal it prints a `reason:` instead, so
+an agent never hangs waiting for an answer it cannot give.
 
 ```sh
 funky-forge <command> --help   # per-command help, generated from the same table that parses flags
@@ -24,10 +25,34 @@ funky-forge --version
 |---|---|
 | Targets | `agents` → `.agents/skills/funky-forge/`, `claude` → `.claude/skills/funky-forge/` |
 | Detection | `.claude/` means Claude; `.agents/skills/`, `.opencode/`, `.codex/` mean shared; both → exit `2` with `TARGET_AMBIGUOUS` and the exact re-run commands; neither → shared with a notice |
-| Writes | New files inside the target directory only |
-| Divergence | A file that differs from the shipped pack is refused (`MODIFIED_FILE`) unless `--force`; `--check` reports it and writes nothing |
+| Writes | Inside the target directory only, plus the opt-in pointer |
+| Version | The pack declares the version of the binary that shipped it, so a stale copy is recognizable. A clean install says one line, `Installed · .agents/skills/funky-forge (0.1.0)`; a second run says `Current · …` and writes nothing |
+| Divergent copy | An older copy, a copy with local changes on the version it declares, or one that declares no version is a decision. On a terminal `install` asks: `1` keeps the copy (the default), `2` replaces it. Without a terminal it exits `2` with a `reason:` naming the path, the versions and the fact that stdin is not a terminal. `--force` replaces without asking |
+| Newer copy | Refused with exit `1`, both versions named: an installed protocol cannot be older than its validator. `--force` performs the downgrade |
 | Pointer | `--with-pointer` appends one marked block to `AGENTS.md` (shared) or `CLAUDE.md` (Claude) and refuses a second (`POINTER_EXISTS`) |
-| Idempotent | A second run reports `Unmodified: 18` and writes nothing |
+| `--check` | Prints the state and the version in every case and writes nothing: `0` when the copy is current, `1` when it is absent, incomplete, older, newer, edited or unversioned |
+| `--dry-run` | Prints the state and the plan, writes nothing, and never asks |
+
+`--json` prints one object, and the notices go to stderr:
+
+```json
+{
+  "ok": true,
+  "target": "agents",
+  "destination": ".agents/skills/funky-forge",
+  "state": "older",
+  "version": { "installed": "0.0.9", "shipped": "0.1.0" },
+  "written": 18,
+  "unmodified": 0,
+  "pointer": null
+}
+```
+
+`state` is one of `absent`, `identical`, `incomplete` (files missing, none of the present ones
+differing), `older`, `newer`, `edited` (same version, different bytes) or `unversioned`. Missing files
+are completed without asking (`Completed · … (0.1.0, 2 file(s) added)`): an interrupted copy is not
+divergence. The version is read from the installed `SKILL.md`, never from the local `package.json`, so a
+copy that travelled by hand still says what it is.
 
 ### `init`
 
@@ -90,7 +115,7 @@ disagree by construction.
 
 | Guarantee | Why it matters |
 |---|---|
-| Never prompts | Safe to call from an agent with no terminal; a real decision becomes exit `2` |
+| Never prompts without a terminal | `install` asks only when stdin is a terminal. With none, a decision becomes a `reason:` and exit `2`, so an agent never waits for an answer it cannot give, and `check`, `calc` and `init` never read stdin at all |
 | Writes only where documented | `install` inside the skill directory, `calc --write` between markers, `init` inside `.funky-forge/` |
 | Deterministic paths | Phase → file → gate report mapping is fixed, so two projects never disagree |
 | Same behavior on every harness | No dependency on a model, a provider, or a network |

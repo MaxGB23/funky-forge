@@ -108,9 +108,9 @@ funky-forge init
 | Pi / Gentle Shell, OpenCode, Codex, Antigravity CLI... | `.agents/skills/funky-forge/` | `--target agents` |
 | Claude Code | `.claude/skills/funky-forge/` | `--target claude` |
 
-`--with-pointer` also appends one marked block to `AGENTS.md` (shared) or `CLAUDE.md` (Claude).
-Detection is automatic. When both harness markers exist the command refuses to guess, exits `2` with
-`TARGET_AMBIGUOUS`, and prints the exact `--target` to use. To run from a clone instead:
+`--with-pointer` also appends one marked block to `AGENTS.md` (shared) or `CLAUDE.md` (Claude), and
+detection is automatic: both markers present is exit `2` with `TARGET_AMBIGUOUS`. The pack declares
+its version, so a stale copy is recognized and replacing a divergent one is a question. From a clone:
 
 ```sh
 git clone https://github.com/MaxGB23/funky-forge

@@ -1,6 +1,7 @@
 ---
 name: funky-forge
 description: 'Plan and quote software projects in four gated phases: problem, design, estimate, proposal. Use when the user wants to define scope, challenge a design, estimate effort, or produce a client proposal.'
+version: 0.1.0
 ---
 
 # funky-forge
@@ -36,8 +37,10 @@ negotiable and do not depend on the harness:
 5. Every phase gets a reviewer. Depth is `light` or `deep`, chosen by explicit triggers only.
 6. The human approves every phase and accepts every risk. The price is a human decision.
 7. Internal artifacts use `language`; the proposal uses `proposal_language`.
-8. The CLI never prompts. On exit `2` (`TARGET_AMBIGUOUS`) ask the human, then re-run with
-   `--target`.
+8. The CLI asks at most one question, and only on a terminal: `install` asks before replacing an
+   installed copy - a different version, local changes on the version it declares, or no version line
+   at all. Exit `2` means ask the human and re-run; `TARGET_AMBIGUOUS` wants `--target`, and
+   `PACK_NOT_ASKED` wants `--force` or leaving the copy as it is.
 
 ## Read protocol
 
