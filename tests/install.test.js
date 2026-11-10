@@ -374,3 +374,80 @@ test('without --with-pointer no user-owned file is written', async () => {
   assert.equal(existsSync(join(dir, 'CLAUDE.md')), false);
   await rm(dir, { recursive: true, force: true });
 });
+
+test('a pack directory without SKILL.md is a question, not a silent overwrite', async () => {
+  const dir = await project();
+  assert.equal((await run(dir)).code, 0);
+  await rm(join(dir, DESTINATION, 'SKILL.md'));
+  await writeFile(join(dir, DESTINATION, 'templates/estimate.md'), '# mine\n', 'utf8');
+
+  const refused = await run(dir);
+  assert.equal(refused.code, 2, 'a pack without a version to read cannot be ordered, so it is asked about');
+  assert.match(refused.err, /declares no version line/);
+  assert.equal(await readFile(join(dir, DESTINATION, 'templates/estimate.md'), 'utf8'), '# mine\n');
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('--json keeps stdout parseable when the answer is to keep the copy', async () => {
+  const dir = await project();
+  assert.equal((await run(dir)).code, 0);
+  await editedLocally(dir);
+
+  const kept = await run(dir, { json: true }, { stdin: terminal('1') });
+  assert.equal(kept.code, 0);
+  const payload = JSON.parse(kept.out);
+  assert.equal(payload.state, 'edited');
+  assert.equal(payload.written, 0);
+  assert.equal(payload.pointer, null);
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('--dry-run refuses an existing pointer instead of promising to append it', async () => {
+  const dir = await project();
+  await writeFile(join(dir, 'AGENTS.md'), '# rules\n', 'utf8');
+  assert.equal((await run(dir, { 'with-pointer': true })).code, 0);
+
+  const blocked = await run(dir, { 'dry-run': true, 'with-pointer': true });
+  assert.equal(blocked.code, 1);
+  assert.match(blocked.err, /POINTER_EXISTS/);
+  assert.doesNotMatch(blocked.out, /Would append/);
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('a piped answer is never consumed: without a terminal it refuses at once', async () => {
+  const dir = await project();
+  assert.equal((await run(dir)).code, 0);
+  await editedLocally(dir);
+
+  const refused = await run(dir, {}, { stdin: Readable.from(['2\n']) });
+  assert.equal(refused.code, 2);
+  assert.match(refused.err, /stdin is not a terminal/);
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('install only ever exits with the three codes this CLI documents', async () => {
+  const codes = new Set([(await run(await project())).code]);
+  for (const mutate of [editedLocally, (dir) => installedAs(dir, '0.0.9'), (dir) => installedAs(dir, '0.2.0'), withoutVersionLine]) {
+    const dir = await project();
+    await run(dir);
+    await mutate(dir);
+    codes.add((await run(dir)).code);
+    codes.add((await run(dir, { check: true })).code);
+    codes.add((await run(dir, { 'dry-run': true })).code);
+    await rm(dir, { recursive: true, force: true });
+  }
+  assert.deepEqual([...codes].sort(), [0, 1, 2]);
+});
+
+test('--json on a Claude target reports the detected destination', async () => {
+  const dir = await project();
+  await mkdir(join(dir, '.claude'), { recursive: true });
+  const detected = await run(dir, { json: true });
+  assert.equal(detected.code, 0);
+  const payload = JSON.parse(detected.out);
+  assert.equal(payload.ok, true);
+  assert.equal(payload.target, 'claude');
+  assert.equal(payload.destination, '.claude/skills/funky-forge');
+  assert.match(detected.err, /Detected: Claude Code/);
+  await rm(dir, { recursive: true, force: true });
+});

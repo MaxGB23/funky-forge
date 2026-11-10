@@ -86,9 +86,11 @@ function inspect(cwd, skillsDir) {
   });
 
   const skill = join(cwd, skillsDir, SKILL_DIR_NAME, 'SKILL.md');
-  const present = existsSync(skill);
+  // The unit that has a version is the pack, so presence is the directory: a pack with files but no
+  // SKILL.md has no version to read, and calling it absent would overwrite an edit without asking.
+  const present = existsSync(join(cwd, skillsDir, SKILL_DIR_NAME));
   const identical = entries.every((entry) => entry.status === 'same');
-  const installedVersion = present ? readDeclaredVersion(readFileSync(skill, 'utf8')) : null;
+  const installedVersion = existsSync(skill) ? readDeclaredVersion(readFileSync(skill, 'utf8')) : null;
   const shippedVersion = readDeclaredVersion(readFileSync(join(SKILL_SOURCE, 'SKILL.md'), 'utf8'));
 
   return {
@@ -233,11 +235,34 @@ export async function install({ cwd = process.cwd(), flags = {}, stdout, stderr,
   const spec = TARGETS[target];
   const found = inspect(cwd, spec.skillsDir);
 
+  /** The `--json` object, built once so every path that succeeds prints the same shape. */
+  const payload = ({ written, pointer }) =>
+    JSON.stringify(
+      {
+        ok: true,
+        target,
+        destination: found.destination,
+        state: found.state,
+        version: { installed: found.installedVersion, shipped: found.shippedVersion },
+        written,
+        unmodified: found.unchanged.length,
+        pointer,
+      },
+      null,
+      2,
+    );
+
   if (flags.check) {
     out(stateLine(found));
     for (const entry of found.missing) out(`  missing: ${found.destination}/${entry.file}`);
     for (const entry of found.modified) out(`  modified: ${found.destination}/${entry.file}`);
     return found.state === 'identical' ? 0 : 1;
+  }
+
+  const pointerPath = join(cwd, spec.pointer);
+  if (flags['with-pointer'] && existsSync(pointerPath) && readFileSync(pointerPath, 'utf8').includes('<!-- funky-forge -->')) {
+    err(`POINTER_EXISTS: ${spec.pointer} already points at funky-forge`);
+    return 1;
   }
 
   if (flags['dry-run']) {
@@ -273,15 +298,13 @@ export async function install({ cwd = process.cwd(), flags = {}, stdout, stderr,
     }
     replace = await decide();
     if (!replace) {
+      if (flags.json) {
+        out(payload({ written: 0, pointer: null }));
+        return 0;
+      }
       notice(`Kept · ${found.destination} (${copyVersion(found)})`);
       return 0;
     }
-  }
-
-  const pointerPath = join(cwd, spec.pointer);
-  if (flags['with-pointer'] && existsSync(pointerPath) && readFileSync(pointerPath, 'utf8').includes('<!-- funky-forge -->')) {
-    err(`POINTER_EXISTS: ${spec.pointer} already points at funky-forge`);
-    return 1;
   }
 
   mkdirSync(join(cwd, spec.skillsDir, SKILL_DIR_NAME), { recursive: true });
@@ -303,20 +326,10 @@ export async function install({ cwd = process.cwd(), flags = {}, stdout, stderr,
   const replaced = replace && !sure;
   if (flags.json) {
     out(
-      JSON.stringify(
-        {
-          ok: true,
-          target,
-          destination: found.destination,
-          state: found.state,
-          version: { installed: found.installedVersion, shipped: found.shippedVersion },
-          written: found.missing.length + (replaced ? found.modified.length : 0),
-          unmodified: found.unchanged.length,
-          pointer: pointerAdded ? spec.pointer : null,
-        },
-        null,
-        2,
-      ),
+      payload({
+        written: found.missing.length + (replaced ? found.modified.length : 0),
+        pointer: pointerAdded ? spec.pointer : null,
+      }),
     );
     return 0;
   }

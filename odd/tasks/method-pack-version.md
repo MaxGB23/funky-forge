@@ -107,6 +107,27 @@ decisions that refine it, the task order, and the evidence. When in doubt, rerea
   the base string and `init`'s help is byte-identical again. Follow-up, not fixed here: that shared
   summary ("overwrite files that differ from the shipped pack") still describes `install` on
   `init --help`, a pre-existing overlap this issue does not own.
-- **L11 — handoff.** Three commits on `feat/method-pack-version`, not pushed. Push, pull request and
-  merge stay the maintainer's decision; the PR body should carry `Closes #25` and the `type:feature`
-  label, both already on the issue.
+- **L11 — handoff (superseded in part by L12).** Three commits on `feat/method-pack-version`, not
+  pushed. Push, pull request and merge stay the maintainer's decision; the PR body should carry
+  `Closes #25` and the `type:feature` label, both already on the issue. The branch was cut from
+  `main` at `c848f34`, so `git diff main` is exactly this issue's work; comparing against `3865b8f`
+  wrongly includes PR #27.
+- **L12 — evidence, independent verification, and the two defects it found.** A hostile verifier read
+  the spec and the diff before delivery and rejected two behaviours:
+  (a) `install --json` on an `edited` copy answered `1` (keep) exited `0` with **empty stdout**,
+  breaking the one-object contract on the only path where a human is present to read it;
+  (b) `--dry-run --with-pointer` had lost the `POINTER_EXISTS` refusal and printed "Would append the
+  pointer to AGENTS.md" for a pointer the real run refuses — the plan promised a write that cannot
+  happen. Both are fixed: the JSON payload is built once and every successful path prints it, and the
+  pointer conflict is checked before the plan.
+  Three corrections came from the same review: a pack directory holding files but no `SKILL.md` is now
+  `unversioned` rather than `absent`, so deleting that file asks instead of silently overwriting edited
+  templates; `--check`'s row documents that `unversioned` also exits `1`; and `skill/SKILL.md` names all
+  three copies the question covers, not just "another version".
+  Six tests were added, four of them the verifier's own probes: the JSON keep path, the dry-run pointer
+  refusal, a piped answer that is never consumed, the exit codes across every state, a pack without
+  `SKILL.md`, and the Claude destination under `--json` (coverage the rewrite had dropped).
+  Re-verified after the fix: `node --test` 207 pass, `node scripts/pack-guard.js` green, and the same
+  differential check against `main` (`c848f34`) byte-identical for `--help`, `init`, `check` and `calc`
+  on stdout, stderr and exit code. Unproven, and stated as such: a real console TTY (the prompt is
+  proved through a stream with `isTTY = true`) and the Node 22 leg (this machine has 24 only).

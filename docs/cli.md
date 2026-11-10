@@ -30,7 +30,7 @@ funky-forge --version
 | Divergent copy | An older copy, a copy with local changes on the version it declares, or one that declares no version is a decision. On a terminal `install` asks: `1` keeps the copy (the default), `2` replaces it. Without a terminal it exits `2` with a `reason:` naming the path, the versions and the fact that stdin is not a terminal. `--force` replaces without asking |
 | Newer copy | Refused with exit `1`, both versions named: an installed protocol cannot be older than its validator. `--force` performs the downgrade |
 | Pointer | `--with-pointer` appends one marked block to `AGENTS.md` (shared) or `CLAUDE.md` (Claude) and refuses a second (`POINTER_EXISTS`) |
-| `--check` | Prints the state and the version in every case and writes nothing: `0` when the copy is current, `1` when it is absent, older, newer or edited |
+| `--check` | Prints the state and the version in every case and writes nothing: `0` when the copy is current, `1` when it is absent, older, newer, edited or unversioned |
 | `--dry-run` | Prints the state and the plan, writes nothing, and never asks |
 
 `--json` prints one object, and the notices go to stderr:
