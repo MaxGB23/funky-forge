@@ -17,9 +17,7 @@ pnpm add --global funky-forge   # or: npm install --global funky-forge
 funky-forge install             # copies the method into your harness skill directory
 ```
 
-Zero dependencies, nothing to build. The second line is what lets an agent run the method; the other
-half of the pair is [`funky-secure`](https://www.npmjs.com/package/funky-secure), which audits the
-repository this one plans.
+Zero dependencies, nothing to build. The second line is what lets an agent run the method.
 
 ![Four gates: the four artifacts feed an independent review, an automated checklist decides pass or fail, and pricing closes with a final proposal](public/funky-forge-diagram.jpg)
 
