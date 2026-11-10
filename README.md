@@ -13,7 +13,7 @@ The point is a price you can defend: every number traces back to a written artif
 review, and a human decision — instead of a spreadsheet nobody remembers building.
 
 ```sh
-pnpm add --global funky-forge   # or: npm install --global funky-forge
+npm install --global funky-forge   # npm ships with Node; pnpm add --global funky-forge also works
 funky-forge install             # copies the method into your harness skill directory
 ```
 
@@ -75,7 +75,7 @@ How a phase runs — gates, depth, verdicts, approval and staleness — is
 
 ## 🧰 Requirements
 
-Node.js 22 or newer, plus npm or pnpm. Nothing to build, and nothing to install at runtime.
+Node.js 22 or newer. Nothing to build, and nothing to install at runtime.
 
 ## 🔒 Supply chain
 
@@ -95,7 +95,7 @@ tune it: [docs/cli.md](docs/cli.md#package-manager).
 ## 📥 Install
 
 ```sh
-pnpm add --global funky-forge     # npm install --global funky-forge also works
+npm install --global funky-forge   # npm ships with Node; pnpm add --global funky-forge also works
 funky-forge install               # inside the project you want to plan
 funky-forge init
 ```
