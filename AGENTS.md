@@ -38,6 +38,12 @@ edited once it is settled; the present is edited freely in its own pull request.
 - **Three facts make a pull request reviewable**, and `scripts/check-pr-policy.js` checks them: the
   body links an issue (`Closes`/`Fixes`/`Refs #N`), exactly one `type:*` label is applied, and the
   branch is `type/description` with a Conventional Commit type.
+- **The run that decides a pull request is the `ready_for_review` one.** Creating it as a draft,
+  labelling it and then marking it ready costs three runs of `test.yml`: `opened` and `labeled` fire
+  while it is still a draft, so both report `pr-policy` as `skipped`, which is the job's guard and never
+  a failure. For the same reason a state string can be stale — `gh pr checks --json state` has shown
+  `IN_PROGRESS` for a job whose `conclusion` was `success` on a completed run — so read the conclusion
+  with `gh run view <run> --json jobs` when the two disagree, and never wait on the state list.
 - **Conventional Commits, one logical change per commit.** The tests and the documentation that
   describe a behaviour travel in the same commit as the behaviour. No `Co-Authored-By` trailers.
 - **Before a pull request:** `node --test` and `npm run pack:check`. CI runs the suite on Ubuntu and
