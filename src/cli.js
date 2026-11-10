@@ -3,11 +3,20 @@
  * flag cannot appear in the parser and stay missing from `--help`.
  */
 
+import { readFileSync } from 'node:fs';
+
 import { calc } from './commands/calc.js';
 import { check } from './commands/check.js';
 import { init } from './commands/init.js';
 import { install } from './commands/install.js';
 import { CliError, EXIT, fail } from './lib/errors.js';
+
+/**
+ * The manifest is the only declaration of the version this binary reports. Reading it here is what
+ * keeps `--version` from being a second copy that a bump leaves behind, which is the defect the pack's
+ * own `version:` line exists to prevent.
+ */
+const PACKAGE = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 const COMMANDS = {
   install: {
@@ -211,7 +220,7 @@ export function main(argv, io = {}) {
     return EXIT.OK;
   }
   if (argv[0] === '--version' || argv[0] === '-v') {
-    stdout('funky-forge 0.1.0');
+    stdout(`funky-forge ${PACKAGE.version}`);
     return EXIT.OK;
   }
 

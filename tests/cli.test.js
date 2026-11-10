@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { existsSync, mkdtempSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -37,6 +37,14 @@ test('--help prints the same usage', () => {
   const { code, out } = run(['--help']);
   assert.equal(code, 0);
   assert.equal(out, `${USAGE}\n`);
+});
+
+test('--version prints the version the manifest owns', () => {
+  const { code, out } = run(['--version']);
+  const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+
+  assert.equal(code, 0);
+  assert.equal(out, `funky-forge ${version}\n`);
 });
 
 test('an unknown command fails with usage on stderr', () => {

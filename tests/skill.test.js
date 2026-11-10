@@ -62,17 +62,29 @@ test('the shipped skill opens and closes a frontmatter block', () => {
   assert.ok(block(lines(SKILL)).length > 0, `${SKILL} ships an empty frontmatter block`);
 });
 
-test('the frontmatter declares exactly the two keys a harness reads', () => {
+test('the frontmatter declares exactly the keys this package owns, and nothing else', () => {
   const keys = block(lines(SKILL))
     .filter((line) => /^[A-Za-z0-9_-]+:/.test(line))
     .map((line) => line.slice(0, line.indexOf(':')));
-  assert.deepEqual(keys, ['name', 'description']);
+  assert.deepEqual(keys, ['name', 'description', 'version']);
 });
 
 test('the skill name matches the package name, so install and frontmatter cannot disagree', () => {
   const name = scalar(block(lines(SKILL)), 'name');
   const { name: packageName } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
   assert.equal(name, packageName);
+});
+
+test('the shipped skill declares the version the manifest owns', () => {
+  const declared = scalar(block(lines(SKILL)), 'version');
+  const { version } = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
+
+  assert.match(version, /^\d+\.\d+\.\d+$/, 'package.json carries no plain semantic version');
+  assert.equal(
+    declared,
+    version,
+    `skill/SKILL.md declares version ${declared}, and package.json says ${version}: bump both, or the tarball ships a pack labelled with the old version`,
+  );
 });
 
 test('the description is one scalar, so its colon stays inside the value', () => {
