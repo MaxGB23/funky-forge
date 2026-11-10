@@ -46,7 +46,8 @@ decisions that refine it, the task order, and the evidence. When in doubt, rerea
 | T1 | Record the contract: `rfcs/02-method-pack-version.md`, plus a dated `## Errata` in RFC 1 for §6.2 and §13.1 | S1-S8 | inline (docs) | `19005f9` |
 | T2 | Declare the version once and compare it: `version:` in `skill/SKILL.md`, pure `src/lib/pack-version.js` (`readDeclaredVersion`, `compareVersions`, `packState`), `--version` from the manifest, the two guards | S2, S6, S8 | inline | `9be903a` |
 | T3 | `install` acts on the state and asks on a terminal: four outcomes, async ripple, `--check`/`--json`/`--dry-run` from the one state, prompt and non-TTY refusal, docs (`docs/cli.md`, `docs/architecture.md`, `README.md`, `skill/SKILL.md`, `src/lib/errors.js`) | S3, S4, S5, S6, S7, S9 | inline | `273d572` |
-| T4 | Close: `node --test` and `npm run pack:check` green, one differential check over the commands the diff did not name, evidence logged | all | inline | — |
+| T4 | Close: `node --test` and `npm run pack:check` green, one differential check over the commands the diff did not name, evidence logged | all | inline | `5f9d13f` |
+| T5 | Native RDD review over the committed slice: four lenses, the provider's refuter, one bounded correction of its four findings, the targeted validator, the acknowledgement | all | inline | `cf9b71b` |
 
 ## Log
 
@@ -131,3 +132,30 @@ decisions that refine it, the task order, and the evidence. When in doubt, rerea
   differential check against `main` (`c848f34`) byte-identical for `--help`, `init`, `check` and `calc`
   on stdout, stderr and exit code. Unproven, and stated as such: a real console TTY (the prompt is
   proved through a stream with `isTTY = true`) and the Node 22 leg (this machine has 24 only).
+- **L13 — native RDD review: approved on the correction (`cf9b71b`).** Lineage
+  `review-b137a7578625aa28`, tier `high` (the runner read `bin/funky-forge.js` as a process boundary),
+  16 changed files and 1322 lines frozen, correction budget 200. Four lenses were selected — risk,
+  resilience, readability, reliability — and the provider then required a refuter, which corroborated
+  four candidate-caused findings:
+  - `R3-001` (BLOCKER, reliability): the keep branch returned success before the pointer block, so
+    `install --with-pointer` on a divergent pack answered keep, exited `0` and appended nothing, while
+    `--json` reported `pointer: null`.
+  - `R3-002` (CRITICAL, reliability): presence was the directory, so an empty pre-created skill
+    directory counted as a copy with no version to order and either asked or exited `2`. The baseline
+    wrote into it.
+  - `R4-partial-or-empty-target` (CRITICAL, resilience): requiring every shipped file before the copy
+    could be anything but a divergence turned an interrupted install into an edit that needed
+    `--force` to repair.
+  - `R4-hidden-prompt-hang` (CRITICAL, resilience): the question goes to stderr, so gating it on
+    `stdin.isTTY` alone could wait for an answer nobody could see.
+  One bounded correction took 196 of the 200 allowed diff lines: the keep now skips only the file
+  writes, presence is whether any shipped file is there, a new `incomplete` state completes missing
+  files, and asking needs a terminal on both ends. The targeted validator approved the correction, and
+  the acknowledgement burned the authority (`gentle-ai.review-acknowledged/v1`). Four advisories remain
+  non-blocking follow-ups, none of which reopens this candidate: `R1-001` (risk, `stateLine`),
+  `R2-001`, `R2-002` (the `--check` loop and the pointer guard) and `R2-003` (the answer table), the
+  last three readability.
+- **L14 — boundary.** The reviewed candidate is `cf9b71b`. This log entry and the task row above are
+  documentation and ship after it, which is why the pull request names `cf9b71b` as the reviewed tree
+  and this commit as the record. Review approval is not delivery authority: the pull request, its
+  merge and the release stay ordinary repository policy.
