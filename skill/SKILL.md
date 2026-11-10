@@ -37,8 +37,9 @@ negotiable and do not depend on the harness:
 5. Every phase gets a reviewer. Depth is `light` or `deep`, chosen by explicit triggers only.
 6. The human approves every phase and accepts every risk. The price is a human decision.
 7. Internal artifacts use `language`; the proposal uses `proposal_language`.
-8. The CLI never prompts. On exit `2` (`TARGET_AMBIGUOUS`) ask the human, then re-run with
-   `--target`.
+8. The CLI asks at most one question, and only on a terminal: `install` asks whether to replace a
+   copy of another version. Exit `2` means ask the human and re-run; `TARGET_AMBIGUOUS` wants
+   `--target`, and `PACK_NOT_ASKED` wants `--force` or leaving the copy as it is.
 
 ## Read protocol
 

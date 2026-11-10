@@ -47,7 +47,7 @@ const FLAG_SPECS = {
   'dry-run': { summary: 'print the plan and write nothing' },
   'with-pointer': { summary: 'append one marked line to AGENTS.md or CLAUDE.md' },
   force: { summary: 'overwrite files that differ from the shipped pack' },
-  check: { summary: 'report divergence and write nothing' },
+  check: { summary: 'report the state, the version and any divergence; write nothing' },
   json: { summary: 'one JSON object on stdout' },
   language: { value: '<en|es>', summary: 'language for internal artifacts' },
   'proposal-language': { value: '<en|es>', summary: 'language for the client proposal only; defaults to the artifact language' },
@@ -188,10 +188,10 @@ export function flagValue(flags, name) {
  * @param {string[]} positionals
  * @param {Record<string, string | boolean>} flags
  * @param {{stdout: (line: string) => void, stderr: (line: string) => void, cwd: string}} io
- * @returns {number}
+ * @returns {Promise<number>}
  */
-function dispatch(command, positionals, flags, io) {
-  if (command === 'install') return install({ cwd: io.cwd, flags, stdout: io.stdout, stderr: io.stderr });
+async function dispatch(command, positionals, flags, io) {
+  if (command === 'install') return install({ cwd: io.cwd, flags, stdout: io.stdout, stderr: io.stderr, stdin: io.stdin });
   if (command === 'init') return init({ cwd: io.cwd, flags, stdout: io.stdout, stderr: io.stderr });
   if (command === 'calc') return calc({ cwd: io.cwd, flags, stdout: io.stdout, stderr: io.stderr });
   if (command === 'check') return check({ cwd: io.cwd, phase: positionals[0], flags, stdout: io.stdout, stderr: io.stderr });
@@ -204,10 +204,10 @@ function dispatch(command, positionals, flags, io) {
 /**
  * Runs the CLI.
  * @param {string[]} argv
- * @param {{stdout?: (line: string) => void, stderr?: (line: string) => void, cwd?: string}} [io]
- * @returns {number}
+ * @param {{stdout?: (line: string) => void, stderr?: (line: string) => void, cwd?: string, stdin?: NodeJS.ReadStream}} [io]
+ * @returns {Promise<number>}
  */
-export function main(argv, io = {}) {
+export async function main(argv, io = {}) {
   const stdout = io.stdout ?? ((line) => process.stdout.write(`${line}\n`));
   const stderr = io.stderr ?? ((line) => process.stderr.write(`${line}\n`));
 
@@ -230,7 +230,7 @@ export function main(argv, io = {}) {
       stdout(commandHelp(command));
       return EXIT.OK;
     }
-    return dispatch(command, positionals, flags, { stdout, stderr, cwd: io.cwd ?? process.cwd() });
+    return await dispatch(command, positionals, flags, { stdout, stderr, cwd: io.cwd ?? process.cwd(), stdin: io.stdin });
   } catch (error) {
     if (error instanceof CliError) {
       stderr(`${error.code}: ${error.message}`);

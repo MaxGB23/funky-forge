@@ -14,109 +14,107 @@ const COMMANDS_FOR_TEST = {
   calc: ['write', 'json', 'help'],
 };
 
-function run(argv, cwd = mkdtempSync(join(tmpdir(), 'ff-cli-'))) {
+async function run(argv, cwd = mkdtempSync(join(tmpdir(), 'ff-cli-'))) {
   const out = [];
   const err = [];
-  const code = main(argv, {
-    stdout: (line) => out.push(`${line}
-`),
-    stderr: (line) => err.push(`${line}
-`),
+  const code = await main(argv, {
+    stdout: (line) => out.push(`${line}\n`),
+    stderr: (line) => err.push(`${line}\n`),
     cwd,
   });
   return { code, out: out.join(''), err: err.join('') };
 }
 
-test('no arguments prints usage and succeeds', () => {
-  const { code, out } = run([]);
+test('no arguments prints usage and succeeds', async () => {
+  const { code, out } = await run([]);
   assert.equal(code, 0);
   assert.match(out, /funky-forge/);
 });
 
-test('--help prints the same usage', () => {
-  const { code, out } = run(['--help']);
+test('--help prints the same usage', async () => {
+  const { code, out } = await run(['--help']);
   assert.equal(code, 0);
   assert.equal(out, `${USAGE}\n`);
 });
 
-test('--version prints the version the manifest owns', () => {
-  const { code, out } = run(['--version']);
+test('--version prints the version the manifest owns', async () => {
+  const { code, out } = await run(['--version']);
   const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
   assert.equal(code, 0);
   assert.equal(out, `funky-forge ${version}\n`);
 });
 
-test('an unknown command fails with usage on stderr', () => {
-  const { code, err } = run(['bogus']);
+test('an unknown command fails with usage on stderr', async () => {
+  const { code, err } = await run(['bogus']);
   assert.equal(code, 1);
   assert.match(err, /unknown command: bogus/);
   assert.match(err, /Usage:/);
 });
 
-test('every documented command is routed, not rejected as unknown', () => {
+test('every documented command is routed, not rejected as unknown', async () => {
   const phases = { check: ['design'] };
   for (const command of ['install', 'init', 'check', 'calc']) {
-    const { err } = run([command, ...(phases[command] ?? [])]);
+    const { err } = await run([command, ...(phases[command] ?? [])]);
     assert.doesNotMatch(err, /unknown command/, command);
   }
 });
 
-test('check on a project without artifacts reports the missing artifact', () => {
-  const { code, out } = run(['check', 'design'], mkdtempSync(join(tmpdir(), 'ff-cli-')));
+test('check on a project without artifacts reports the missing artifact', async () => {
+  const { code, out } = await run(['check', 'design'], mkdtempSync(join(tmpdir(), 'ff-cli-')));
   assert.equal(code, 1);
   assert.match(out, /MISSING_ARTIFACT/);
 });
 
-test('a flag that needs a value fails when the value is missing', () => {
-  const { code, err } = run(['install', '--target']);
+test('a flag that needs a value fails when the value is missing', async () => {
+  const { code, err } = await run(['install', '--target']);
   assert.equal(code, 1);
   assert.match(err, /FLAG_VALUE_MISSING/);
   assert.match(err, /--target/);
 });
 
-test('an unknown flag fails instead of being ignored', () => {
-  const { code, err } = run(['install', '--nope']);
+test('an unknown flag fails instead of being ignored', async () => {
+  const { code, err } = await run(['install', '--nope']);
   assert.equal(code, 1);
   assert.match(err, /UNKNOWN_FLAG/);
   assert.match(err, /--nope/);
 });
 
-test('check requires a phase argument', () => {
-  const { code, err } = run(['check']);
+test('check requires a phase argument', async () => {
+  const { code, err } = await run(['check']);
   assert.equal(code, 1);
   assert.match(err, /PHASE_REQUIRED/);
 });
 
-test('-h prints the global usage', () => {
-  const { code, out } = run(['-h']);
+test('-h prints the global usage', async () => {
+  const { code, out } = await run(['-h']);
   assert.equal(code, 0);
   assert.equal(out, `${USAGE}\n`);
 });
 
-test('a command prints its own help and its own flags', () => {
-  const install = run(['install', '--help']);
+test('a command prints its own help and its own flags', async () => {
+  const install = await run(['install', '--help']);
   assert.equal(install.code, 0);
   assert.match(install.out, /funky-forge install - copy the method pack/);
   assert.match(install.out, /--target/);
   assert.doesNotMatch(install.out, /funky-forge check <phase>/);
 
-  const check = run(['check', '--help']);
+  const check = await run(['check', '--help']);
   assert.equal(check.code, 0);
   assert.match(check.out, /funky-forge check - /);
   assert.match(check.out, /--strict/);
 });
 
-test('install -h shows help instead of installing anything', () => {
+test('install -h shows help instead of installing anything', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'ff-cli-'));
-  const { code, out } = run(['install', '-h'], dir);
+  const { code, out } = await run(['install', '-h'], dir);
   assert.equal(code, 0);
   assert.match(out, /funky-forge install -/);
   assert.equal(existsSync(join(dir, '.agents')), false);
 });
 
-test('an unknown short flag is refused instead of being read as a positional', () => {
-  const { code, err } = run(['install', '-x']);
+test('an unknown short flag is refused instead of being read as a positional', async () => {
+  const { code, err } = await run(['install', '-x']);
   assert.equal(code, 1);
   assert.match(err, /UNKNOWN_FLAG/);
   assert.match(err, /-x/);
@@ -136,9 +134,9 @@ test('USAGE lists every command and marks optional flags as optional', () => {
   assert.ok(!USAGE.includes('[<phase>]'));
 });
 
-test('every declared flag appears in its own command help', () => {
+test('every declared flag appears in its own command help', async () => {
   for (const [command, names] of Object.entries(COMMANDS_FOR_TEST)) {
-    const { out } = run([command, '--help']);
+    const { out } = await run([command, '--help']);
     for (const name of names) assert.ok(out.includes(`--${name}`), `${command} --${name}`);
   }
 });
