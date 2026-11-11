@@ -20,7 +20,10 @@ Any one of these being false means the release stops here, before anything touch
 - A clean tree on `main`, and a gate that was green for the commit the tag will name.
 - `package.json` `version` equals the tag without its `v`. `node scripts/release-guard.js --tag vX.Y.Z`
   answers that with exit `2` on a mismatch, and the release workflow runs the same guard before the
-  stage: after the stage the only move left is a reject, which needs 2FA.
+  stage: after the stage the only move left is a reject, which needs 2FA. The suite names every other
+  place the version lives — the pack declares it in `skill/SKILL.md`, a guard binds the two, and
+  `docs/cli.md` repeats it in its captures — so bump the manifest and let the suite fail until each copy
+  agrees, rather than finding them by hand.
 - `npm --version` is 11.15.0 or higher. `npm stage` does not exist before it.
 - 2FA is enabled for writes on the account.
 - The package's trusted publisher allows **`npm stage publish` only**, never `npm publish`.
@@ -41,8 +44,13 @@ Any one of these being false means the release stops here, before anything touch
    re-push the tag — it does not move, and the version is already queued — and do not reject the
    candidate to "clean up": on a package whose only content is the placeholder, a reject unpublishes
    the package and destroys its trusted publisher.
-4. **Reviews the candidate** — the maintainer. `npm stage list`, `npm stage view <id>`,
-   `npm stage download <id>`, then read the tarball's file set against the `files` contract.
+4. **Reviews the candidate** — the maintainer, and **with a live `npm login` session**: `npm stage`
+   authenticates, so a review begun without one answers `E401`, and the two-hour session step 5 needs
+   does not exist yet. `npm stage list`, `npm stage view <id>`, `npm stage download <id>` — which writes
+   the tarball into the working directory, because it ignores a destination argument — then read the
+   tarball's file set against the `files` contract. **Compare the artifact's `sha1` with the `shasum` in
+   `npm stage list`**: that is the difference between having reviewed a tarball and having reviewed *the*
+   tarball the registry will serve.
 5. **Approves with 2FA** — the maintainer. Nothing is installable before this. A fresh candidate
    reports `validating` before `staged`: approve only once it reads `staged`. And an unapproved
    candidate is not free — the semver index treats that version as taken — so decide: approve it, or
@@ -56,6 +64,9 @@ Any one of these being false means the release stops here, before anything touch
    published after the setting is on. Write `RELEASE_NOTES.md` with the tagged commit, the
    `dist.integrity` and the provenance URL, run
    `gh release create vX.Y.Z --title "vX.Y.Z" --notes-file RELEASE_NOTES.md`, then delete the file.
+   When the tag already exists, `gh release create` records `target_commitish` as the default branch
+   rather than the commit: the binding an auditor should compare is the immutable tag and the
+   provenance, both of which name the SHA.
 
 ## First publication
 
