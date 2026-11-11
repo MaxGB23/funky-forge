@@ -205,20 +205,24 @@ test('an older copy names both versions and needs an answer', async () => {
 test('a copy newer than the binary is refused without asking, because no answer would help', async () => {
   const dir = await project();
   assert.equal((await run(dir)).code, 0);
-  await installedAs(dir, '0.2.0');
+  // Derived, not written down. A literal here means "newer than the binary" only until the binary moves
+  // past it, and then this test quietly checks the opposite case: it did, on the 0.2.0 bump, where a
+  // fixture at 0.2.0 stopped being newer than a 0.2.0 binary and the refusal became a replacement.
+  const newer = SHIPPED.replace(/^(\d+)\.(\d+)\.(\d+)$/, (_, major, minor, patch) => `${major}.${minor}.${Number(patch) + 1}`);
+  await installedAs(dir, newer);
   const skill = join(dir, DESTINATION, 'SKILL.md');
   const before = await readFile(skill, 'utf8');
 
   const refused = await run(dir, {}, { stdin: terminal('2'), interactive: true });
   assert.equal(refused.code, 1, 'a validator cannot accept a protocol newer than itself');
   assert.match(refused.err, /NEWER_PACK/);
-  assert.match(refused.err, /is version 0\.2\.0/);
+  assert.match(refused.err, new RegExp(`is version ${newer.replace(/\./g, '\\.')}`));
   assert.doesNotMatch(refused.err, /choose 1 or 2/, 'there is no question to ask');
   assert.equal(await readFile(skill, 'utf8'), before);
 
   const downgraded = await run(dir, { force: true });
   assert.equal(downgraded.code, 0);
-  assert.ok(downgraded.out.includes(`Replaced · ${DESTINATION} (${SHIPPED}, was 0.2.0)`), downgraded.out);
+  assert.ok(downgraded.out.includes(`Replaced · ${DESTINATION} (${SHIPPED}, was ${newer})`), downgraded.out);
   await rm(dir, { recursive: true, force: true });
 });
 
