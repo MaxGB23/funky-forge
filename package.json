@@ -1,6 +1,6 @@
 {
   "name": "funky-forge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Portable planning and quoting method with a deterministic CLI: four gated phases from a fuzzy idea to a client proposal.",
   "type": "module",
   "license": "MIT",

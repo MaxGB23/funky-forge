@@ -26,7 +26,7 @@ funky-forge --version
 | Targets | `agents` → `.agents/skills/funky-forge/`, `claude` → `.claude/skills/funky-forge/` |
 | Detection | `.claude/` means Claude; `.agents/skills/`, `.opencode/`, `.codex/` mean shared; both → exit `2` with `TARGET_AMBIGUOUS` and the exact re-run commands; neither → shared with a notice |
 | Writes | Inside the target directory only, plus the opt-in pointer |
-| Version | The pack declares the version of the binary that shipped it, so a stale copy is recognizable. A clean install says one line, `Installed · .agents/skills/funky-forge (0.1.0)`; a second run says `Current · …` and writes nothing |
+| Version | The pack declares the version of the binary that shipped it, so a stale copy is recognizable. A clean install says one line, `Installed · .agents/skills/funky-forge (0.2.0)`; a second run says `Current · …` and writes nothing |
 | Divergent copy | An older copy, a copy with local changes on the version it declares, or one that declares no version is a decision. On a terminal `install` asks with each answer labelled, `[1]` keeps the copy (the default) and `[2]` replaces it, saying when that discards local changes. Without a terminal it exits `2` with a `reason:` naming the path, the versions and the fact that stdin is not a terminal. `--force` replaces without asking |
 | Newer copy | Refused with exit `1`, both versions named: an installed protocol cannot be older than its validator. `--force` performs the downgrade |
 | Pointer | `--with-pointer` appends one marked block to `AGENTS.md` (shared) or `CLAUDE.md` (Claude) and refuses a second (`POINTER_EXISTS`) |
@@ -41,7 +41,7 @@ funky-forge --version
   "target": "agents",
   "destination": ".agents/skills/funky-forge",
   "state": "older",
-  "version": { "installed": "0.0.9", "shipped": "0.1.0" },
+  "version": { "installed": "0.0.9", "shipped": "0.2.0" },
   "written": 18,
   "unmodified": 0,
   "pointer": null
@@ -50,7 +50,7 @@ funky-forge --version
 
 `state` is one of `absent`, `identical`, `incomplete` (files missing, none of the present ones
 differing), `older`, `newer`, `edited` (same version, different bytes) or `unversioned`. Missing files
-are completed without asking (`Completed · … (0.1.0, 2 file(s) added)`): an interrupted copy is not
+are completed without asking (`Completed · … (0.2.0, 2 file(s) added)`): an interrupted copy is not
 divergence. The version is read from the installed `SKILL.md`, never from the local `package.json`, so a
 copy that travelled by hand still says what it is.
 
