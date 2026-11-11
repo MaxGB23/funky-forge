@@ -29,7 +29,7 @@ export const SHARED_MARKERS = ['.agents/skills', '.opencode', '.codex'];
 
 /** The one question this CLI asks, and the two answers it accepts. Empty means keep: a stray return
  * key must never be the reason a copy is overwritten. */
-const QUESTION = 'funky-forge install: choose 1 or 2 [1]: ';
+const QUESTION = 'Choose 1 or 2 [1]: ';
 const ANSWERS = {
   '': 'keep',
   '1': 'keep',
@@ -140,16 +140,24 @@ function notAskedReason(found, stdin) {
   return `cannot ask whether to replace ${found.destination}: ${difference(found)}, and ${missing}`;
 }
 
+/**
+ * The question in the words of the case that raised it. Each answer says what it does, and the one that
+ * overwrites says what it costs, so nobody has to remember which number is the destructive one.
+ */
 function questionLines(found) {
-  const installed =
-    found.state === 'unversioned'
-      ? 'none declared'
-      : `version ${found.state === 'edited' ? `${found.installedVersion} with local changes` : found.installedVersion}`;
-  return [
-    `funky-forge install: replace ${found.destination}?`,
-    `  installed: ${installed}`,
-    `  shipped:   version ${found.shippedVersion}`,
-  ];
+  const { destination, state, installedVersion, shippedVersion } = found;
+  if (state === 'edited') {
+    return [
+      `funky-forge install: ${destination} has local changes on version ${installedVersion}`,
+      '  [1] keep them (default)',
+      `  [2] replace the copy with ${shippedVersion}, discarding the changes`,
+    ];
+  }
+  const opening =
+    state === 'unversioned'
+      ? `funky-forge install: ${destination} declares no version line; this binary ships ${shippedVersion}`
+      : `funky-forge install: ${destination} is version ${installedVersion}; this binary ships ${shippedVersion}`;
+  return [opening, '  [1] keep the copy as it is (default)', `  [2] replace it with ${shippedVersion}`];
 }
 
 /**

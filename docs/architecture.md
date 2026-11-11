@@ -97,6 +97,27 @@ funky-forge/
 `src/lib` holds no I/O: parsers and rules are pure functions over text and data, which is why the
 tests can exercise them without a filesystem. `src/commands` holds all the effects.
 
+## The stack, and why not TypeScript
+
+JavaScript ESM, `node --test` with `node:assert/strict`, JSDoc types, no build step, no `dist/`. This
+is a choice, not an obligation: unlike `funky-secure`, this package does not audit a supply chain, so a
+dev dependency would cost it an argument it never made. What it does share is the shape of the problem
+— the input is someone else's document. `check` parses a brief, a problem, a design and gate reports
+other people wrote, and frontmatter is `string` at that boundary: a type cannot say "this heading is
+missing" or "this table has no hours", and the rule that does is the validator.
+
+Two costs are accepted rather than hidden. A property typo and an incomplete refactor surface at
+runtime, not at compile time. And a `dist` would be worse than either: this binary is installed
+globally, and a stale build is undetectable from the user's side — what runs would no longer be what a
+reviewer read. JSDoc keeps the checker reachable without the artifact (`tsc --noEmit`), so what was
+deferred is the build, not the verification. The decision flips if the package gains a public
+programmatic API or the codebase grows shared state across many modules.
+
+The reasoning predates the first line of code, in `odd/tasks/initial-implementation.md` (S7, L2-L3),
+where "TS ESM y vitest" was proposed and rejected. Vitest went for the same reason: real temporary
+directories need no mocks, and a test framework would be a second dev dependency with no artifact to
+show for it.
+
 ## Invariants
 
 1. **One command only reads.** `check` never writes; there is no `--fix`. A validator that mutates
