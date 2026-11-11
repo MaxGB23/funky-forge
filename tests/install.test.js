@@ -245,10 +245,16 @@ test('a terminal asks in one place, and key 1 keeps the copy', async () => {
 
   const kept = await run(dir, {}, { stdin: terminal('1'), interactive: true });
   assert.equal(kept.code, 0);
-  assert.match(kept.err, new RegExp(`funky-forge install: replace ${DESTINATION.replaceAll('.', '\\.')}\\?`));
-  assert.match(kept.err, /installed: version .* with local changes/);
-  assert.match(kept.err, new RegExp(`shipped: {3}version ${SHIPPED.replaceAll('.', '\\.')}`));
-  assert.match(kept.err, /choose 1 or 2 \[1\]:/);
+  assert.match(
+    kept.err,
+    new RegExp(`funky-forge install: ${DESTINATION.replaceAll('.', '\\.')} has local changes on version ${SHIPPED.replaceAll('.', '\\.')}`),
+  );
+  assert.match(kept.err, /\[1\] keep them \(default\)/);
+  assert.match(
+    kept.err,
+    new RegExp(`\\[2\\] replace the copy with ${SHIPPED.replaceAll('.', '\\.')}, discarding the changes`),
+  );
+  assert.match(kept.err, /Choose 1 or 2 \[1\]:/);
   assert.ok(kept.out.includes(`Kept · ${DESTINATION}`), kept.out);
   assert.match(await readFile(join(dir, DESTINATION, 'SKILL.md'), 'utf8'), /my note/);
   await rm(dir, { recursive: true, force: true });
@@ -273,7 +279,7 @@ test('an answer that is neither key is asked again, and a terminal that gives up
 
   const kept = await run(dir, {}, { stdin: terminal('maybe', '3', 'later'), interactive: true });
   assert.equal(kept.code, 0);
-  assert.equal((kept.err.match(/choose 1 or 2 \[1\]:/g) ?? []).length, 3, kept.err);
+  assert.equal((kept.err.match(/Choose 1 or 2 \[1\]:/g) ?? []).length, 3, kept.err);
   assert.ok(kept.out.includes(`Kept · ${DESTINATION}`), kept.out);
   assert.match(await readFile(join(dir, DESTINATION, 'SKILL.md'), 'utf8'), /my note/);
   await rm(dir, { recursive: true, force: true });
@@ -523,5 +529,21 @@ test('a terminal stdin with an unwritten stderr refuses instead of waiting for a
   assert.match(refused.err, /stderr is not a terminal, so the question could not be shown/);
   assert.doesNotMatch(refused.err, /choose 1 or 2/);
   assert.match(await readFile(join(dir, DESTINATION, 'SKILL.md'), 'utf8'), /my note/);
+  await rm(dir, { recursive: true, force: true });
+});
+
+test('the question for another version labels both answers and names the versions', async () => {
+  const dir = await project();
+  assert.equal((await run(dir)).code, 0);
+  await installedAs(dir, '0.0.9');
+
+  const kept = await run(dir, {}, { stdin: terminal('1'), interactive: true });
+  assert.equal(kept.code, 0);
+  assert.ok(
+    kept.err.includes(`funky-forge install: ${DESTINATION} is version 0.0.9; this binary ships ${SHIPPED}`),
+    kept.err,
+  );
+  assert.ok(kept.err.includes('[1] keep the copy as it is (default)'), kept.err);
+  assert.ok(kept.err.includes(`[2] replace it with ${SHIPPED}`), kept.err);
   await rm(dir, { recursive: true, force: true });
 });
