@@ -50,6 +50,8 @@ edited once it is settled; the present is edited freely in its own pull request.
   branch can answer with an earlier commit's run, which is how a green run gets reported as a problem.
   The gate it reads is the matrix and not the run summary: on a push to `main` the guard makes
   `pr-policy` read `skipped`, and that is not a failure to investigate.
+- **A pull request is opened with `node scripts/open-pr.js`, never a sequence written by hand.** The
+  suite, the policy, a labelled draft, ready, then the run of this commit: one command runs that order.
 - **Conventional Commits, one logical change per commit.** The tests and the documentation that
   describe a behaviour travel in the same commit as the behaviour. No `Co-Authored-By` trailers.
 - **Before a pull request:** `node --test` and `npm run pack:check`. A suite reporting fewer tests than
