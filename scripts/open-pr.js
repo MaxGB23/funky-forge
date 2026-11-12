@@ -193,6 +193,48 @@ export function pullRequestFrom(stdout) {
 }
 
 /**
+ * The pull request of one head, from `gh pr list --head <head> --json number,url`. `--head` is exact, so
+ * several rows are one head in several states; the first row that carries a number and a URL is the one
+ * an interrupted ritual left behind.
+ *
+ * @param {string} stdout
+ * @returns {{ url: string, number: number } | null}
+ */
+export function openPullRequestFrom(stdout) {
+  const rows = parseJson(stdout);
+  if (!Array.isArray(rows)) return null;
+
+  const row = rows.find(
+    (entry) => Number.isFinite(Number(entry?.number)) && typeof entry?.url === 'string',
+  );
+  return row === undefined ? null : { url: row.url, number: Number(row.number) };
+}
+
+/**
+ * Asks `gh` which pull request this head already has, keeping "there is none" apart from "nobody could
+ * tell": collapsing the two turns a pull request that exists into a duplicate one.
+ *
+ * @param {(args: string[]) => { ok: boolean, stdout: string, stderr?: string }} gh
+ * @param {{ head: string, repo?: string|null }} options
+ * @returns {{ pullRequest: { url: string, number: number } | null, problem: string | null }}
+ */
+function listOpenPullRequest(gh, { head, repo = null }) {
+  const listed = gh(withRepo(repo, ['pr', 'list', '--head', head, '--json', 'number,url']));
+  if (listed?.ok !== true) {
+    const detail = String(listed?.stderr ?? '').trim().split('\n')[0];
+    return {
+      pullRequest: null,
+      problem:
+        detail === ''
+          ? 'the pull request of this head cannot be read'
+          : `the pull request of this head cannot be read: ${detail}`,
+    };
+  }
+
+  return { pullRequest: openPullRequestFrom(listed?.stdout), problem: null };
+}
+
+/**
  * How many tests failed, from the reporter's own summary. Both reporters this suite can emit are read:
  * the spec reporter writes `ℹ fail 2` and TAP writes `# fail 2`. A suite that died before it could
  * summarize answers `null`, which still refuses.
@@ -422,15 +464,38 @@ export async function run(deps = {}) {
   // pull request or claims a failure that may not exist.
   if (created?.timedOut === true) return unanswered(out, 'gh pr create', `its ceiling of ${options.timeout}s`, `whether a pull request was created cannot be told: check gh pr list --head ${head} before rerunning`);
 
-  const pullRequest = pullRequestFrom(created?.stdout);
+  let pullRequest = pullRequestFrom(created?.stdout);
+  let adopted = false;
+
   if (created?.ok !== true || pullRequest === null) {
-    err.write('open-pr: gh pr create failed\n');
-    for (const chunk of [created?.stdout, created?.stderr]) {
-      if (typeof chunk === 'string' && chunk.trim() !== '') err.write(`${chunk.trim()}\n`);
+    // A creation that failed may have failed because the pull request already exists: an interrupted
+    // ritual leaves a real one behind, which is the cost `AGENTS.md` names, and rerunning the command is
+    // the recovery the ready creation was designed for. Adoption changes what identifies the run: the
+    // creation identifies it by the floor, taken before it fires, while the adopted pull request
+    // identifies it by head, because its runs are older than any floor a rerun can take.
+    const open = listOpenPullRequest(gh, { head, repo: options.repo });
+    if (open.pullRequest !== null) {
+      pullRequest = open.pullRequest;
+      adopted = true;
+    } else if (open.problem !== null) {
+      err.write(`open-pr: unknown — the creation failed and ${open.problem}, so whether a pull request exists is unknown; check gh pr list --head ${head}\n`);
+      return UNKNOWN;
+    } else {
+      err.write('open-pr: gh pr create failed\n');
+      for (const chunk of [created?.stdout, created?.stderr]) {
+        if (typeof chunk === 'string' && chunk.trim() !== '') err.write(`${chunk.trim()}\n`);
+      }
+      return RED;
     }
-    return RED;
   }
-  out.write(`open-pr: ${pullRequest.url}\n`);
+
+  // The adoption is printed because a green that came from an adopted run is only auditable when the
+  // output says the pull request was not created by this run of the command.
+  out.write(
+    adopted
+      ? `open-pr: adopted ${pullRequest.url} — a pull request for ${head} already existed, so none was created\n`
+      : `open-pr: ${pullRequest.url}\n`,
+  );
 
   // 5. The runs of this commit past the floor, polled until the set of them holds still. A wait that
   // prints nothing is indistinguishable from a hang, so the line is written before the first poll and not
@@ -442,7 +507,9 @@ export async function run(deps = {}) {
     head,
     repo: options.repo,
     sha,
-    floor,
+    // An adopted pull request is identified by head, not by a floor: its runs existed before this run of
+    // the command took its floor, so a floor would hide exactly the runs it is here to report.
+    floor: adopted ? 0 : floor,
     sleep,
     timeoutSeconds: options.timeout,
     intervalSeconds: DEFAULT_INTERVAL_SECONDS,
@@ -461,7 +528,9 @@ export async function run(deps = {}) {
 
   if (ids.length === 0) {
     out.write(
-      `open-pr: unknown — no run of ${sha} appeared within ${options.timeout}s that the creation could have fired; this is not a failure\n`,
+      adopted
+        ? `open-pr: unknown — no run of ${sha} appeared within ${options.timeout}s for the adopted ${pullRequest.url}, so it has no verdict; this is not a failure\n`
+        : `open-pr: unknown — no run of ${sha} appeared within ${options.timeout}s that the creation could have fired; this is not a failure\n`,
     );
     return UNKNOWN;
   }

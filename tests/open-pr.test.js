@@ -39,7 +39,7 @@ function capture() {
  * `runs` is either the one answer every poll gets, or one answer per poll, the last one repeating:
  * `[[], [decided]]` is a run that is not visible yet and then is.
  */
-function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snapshot = [], runs = [], floorRead = null, conclusion = 'success', jobs = null, watch = {}, views = {} } = {}) {
+function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snapshot = [], runs = [], floorRead = null, conclusion = 'success', jobs = null, watch = {}, views = {}, existing = [], prListRead = null } = {}) {
   const calls = [];
   const seen = [];
   // What the API has said about each run id so far, so `run view` answers what the list said about that
@@ -64,7 +64,16 @@ function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snaps
     seen.push(options);
     const [group, action] = args;
 
-    if (group === 'pr' && action === 'create') return { ok: true, stdout: create, stderr: '' };
+    if (group === 'pr' && action === 'create') {
+      return typeof create === 'string' ? { ok: true, stdout: create, stderr: '' } : create;
+    }
+    if (group === 'pr' && action === 'list') {
+      // What the head already has. A failing read is a third answer, never "there is none": the one
+      // collapses into a duplicate pull request.
+      return prListRead === null
+        ? { ok: true, stdout: JSON.stringify(existing), stderr: '' }
+        : { ok: false, stdout: '', stderr: prListRead };
+    }
     if (group === 'run' && action === 'list') {
       lists += 1;
       // The first read is the floor, taken before a pull request exists; a non-null `floorRead` is that
@@ -782,7 +791,7 @@ test('a poll that does not answer ends the wait as unknown, and is not retried',
 test('a create that does not answer is unknown, never red', async (t) => {
   // `gh pr create` is the event the run belongs to, so a creation killed at its ceiling may or may not
   // have happened: the only honest answer names both ways out and never claims a failure.
-  const { exec: answered } = gh();
+  const { exec: answered, calls } = gh();
   const hangCreate = (args, options) =>
     args[0] === 'pr' && args[1] === 'create' ? { ok: false, stdout: '', stderr: '', timedOut: true } : answered(args, options);
   const created = frontHalf(t, { exec: hangCreate });
@@ -792,6 +801,129 @@ test('a create that does not answer is unknown, never red', async (t) => {
     /create did not answer within its ceiling of 30s, so whether a pull request was created cannot be told/,
   );
   assert.match(created.out.text, /check gh pr list --head feat\/open-pr/, 'and the command that settles it');
+  assert.equal(calls.filter((call) => call.startsWith('pr list')).length, 0, 'nothing is adopted on an answer nobody gave');
+});
+
+test('a creation that fails because the pull request exists adopts it and reports its verdict', async (t) => {
+  const out = capture();
+  const err = capture();
+  // The ritual was interrupted after the creation, so a real pull request is there and this rerun's
+  // `gh pr create` fails. The run of this commit existed before this rerun took its floor, so a floor
+  // would hide the very run being reported: an adopted pull request is identified by head.
+  const run1 = { databaseId: 22, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const { exec, calls } = gh({
+    create: { ok: false, stdout: '', stderr: 'a pull request for branch "feat/open-pr" already exists' },
+    existing: [{ number: 42, url: 'https://github.com/MaxGB23/funky-forge/pull/42' }],
+    snapshot: [run1],
+    runs: [run1],
+  });
+
+  const code = await run({
+    argv: argvFor(bodyFile(t, BODY)),
+    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
+    pack: packGuard(PACK_GREEN),
+    exec,
+    resolveSha: () => SHA,
+    sleep: async () => {},
+    out,
+    err,
+  });
+
+  assert.equal(code, GREEN, err.text);
+  assert.match(out.text, /open-pr: adopted https:\/\/github\.com\/MaxGB23\/funky-forge\/pull\/42/, 'the output says it adopted, never that it created');
+  assert.match(out.text, /open-pr: run 22 {2}· {2}passed/, 'the verdict is the run of that pull request');
+  assert.match(out.text.trimEnd().split('\n').pop(), /pull\/42 {2}· {2}passed/);
+  assert.equal(err.text, '', 'an adoption is not a failure');
+  const listed = calls.find((call) => call.startsWith('pr list'));
+  assert.match(String(listed), /pr list --head feat\/open-pr --json number,url/, 'the pull request of this head is asked for');
+  assert.equal(calls.filter((call) => call.startsWith('pr create')).length, 1, 'nothing is created a second time');
+});
+
+test('a creation that fails with no pull request for the head is red, naming what gh said', async (t) => {
+  const out = capture();
+  const err = capture();
+  const { exec, calls } = gh({
+    create: { ok: false, stdout: '', stderr: 'a pull request for branch "feat/open-pr" already exists' },
+    existing: [],
+  });
+
+  const code = await run({
+    argv: argvFor(bodyFile(t, BODY)),
+    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
+    pack: packGuard(PACK_GREEN),
+    exec,
+    resolveSha: () => SHA,
+    sleep: async () => {},
+    out,
+    err,
+  });
+
+  assert.equal(code, RED, 'a creation that failed with nothing to adopt is a failure');
+  assert.match(err.text, /^open-pr: gh pr create failed$/m);
+  assert.match(err.text, /already exists/, 'the words of gh are kept, because they are the evidence');
+  assert.equal(calls.filter((call) => call.startsWith('pr list')).length, 1, 'the head is asked about before failing');
+  assert.doesNotMatch(out.text, /adopted/, 'nothing was adopted');
+});
+
+test('a creation that fails while the head cannot be read is unknown, never red', async (t) => {
+  const out = capture();
+  const err = capture();
+  // "There is none" and "nobody could tell" are different answers: the second one is what turns a pull
+  // request that exists into a duplicate one, so it is exit 2 and never a failure.
+  const { exec } = gh({
+    create: { ok: false, stdout: '', stderr: 'not found' },
+    prListRead: 'gh: not logged in',
+  });
+
+  const code = await run({
+    argv: argvFor(bodyFile(t, BODY)),
+    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
+    pack: packGuard(PACK_GREEN),
+    exec,
+    resolveSha: () => SHA,
+    sleep: async () => {},
+    out,
+    err,
+  });
+
+  assert.equal(code, UNKNOWN, 'whether a pull request exists is unknown, and 2 never means failure');
+  assert.match(
+    err.text,
+    /the creation failed and the pull request of this head cannot be read: gh: not logged in, so whether a pull request exists is unknown; check gh pr list --head feat\/open-pr/,
+  );
+  assert.doesNotMatch(out.text, /adopted/);
+});
+
+test('an adopted pull request with no run is unknown, and names the pull request it adopted', async (t) => {
+  const out = capture();
+  const err = capture();
+  // The adopted pull request has no run of this commit yet. A green from nothing is not a verdict, and
+  // the answer names the pull request that was adopted, so the reading can be audited.
+  const { exec } = gh({
+    create: { ok: false, stdout: '', stderr: 'a pull request for branch "feat/open-pr" already exists' },
+    existing: [{ number: 42, url: 'https://github.com/MaxGB23/funky-forge/pull/42' }],
+    snapshot: [],
+    runs: [],
+  });
+
+  const code = await run({
+    argv: argvFor(bodyFile(t, BODY)),
+    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
+    pack: packGuard(PACK_GREEN),
+    exec,
+    resolveSha: () => SHA,
+    sleep: async () => {},
+    out,
+    err,
+  });
+
+  assert.equal(code, UNKNOWN, 'no run is no verdict, and 2 never means failure');
+  assert.match(out.text, /open-pr: adopted https:\/\/github\.com\/MaxGB23\/funky-forge\/pull\/42/);
+  assert.match(
+    out.text,
+    /no run of a1b2c3d4e5f60718293a4b5c6d7e8f9012345678 appeared within 30s for the adopted https:\/\/github\.com\/MaxGB23\/funky-forge\/pull\/42, so it has no verdict; this is not a failure/,
+    'the adopted pull request is named',
+  );
 });
 
 test('a suite or a packed set that does not answer is unknown, never red', async (t) => {
