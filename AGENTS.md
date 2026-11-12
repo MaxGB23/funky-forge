@@ -42,7 +42,10 @@ edited once it is settled; the present is edited freely in its own pull request.
   `node scripts/open-pr.js` puts the label in the creation and never opens a draft, because GitHub does
   not say which pull-request action created a run: a draft's `opened` run and the `ready_for_review` run
   carry the same commit and both report `event: pull_request`, so a ritual with two events cannot tell
-  them apart afterwards, and one that avoids the second event does not have to. It is not one event
+  them apart afterwards, and one that avoids the second event does not have to. The price of that choice
+  is named rather than hidden: an interrupted ritual leaves a **real pull request** instead of a harmless
+  draft, which is why `node scripts/open-pr.js` adopts the pull request of the head instead of failing on
+  a creation that finds it already there. It is not one event
   either — the workflow triggers on `labeled`, so a labelled creation fires `opened` and `labeled`, two
   runs of this commit. The floor of run ids is read before anything is created, every run past it is a
   candidate, the set is polled until it stops growing, and the set decides: any red wins, an all-green
