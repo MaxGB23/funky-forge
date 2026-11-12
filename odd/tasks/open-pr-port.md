@@ -191,3 +191,25 @@ and label `type:ci`; this file records the decisions that refine it, the task or
   appearing later, an unreadable event time); `tests/open-pr.test.js` 31 → **35**, suite 266 → **270**.
   Mutation: returning the runs unfiltered kills exactly those two cases that pin the property and
   nothing else, which is what a property looks like when it is load-bearing.
+- **L15.** Third lineage `review-020de5446fb6a16e` (lens `reliability`, tier `high`, 2182 lines) ran on
+  `0decf35` and ended **`escalated`**: the validator rejected the correction and named one surviving
+  finding, `R3-001` (BLOCKER). The refuter had already let it through.
+  The finding: the stamp filter accepts any run with `createdAt >= readyAt`, but GitHub stamps to the
+  second and a *delayed* `opened` run can be created at or after the ready event, so it can satisfy the
+  filter and be the only visible run.
+  My correction was a **1.5 s quiet period** before `gh pr ready`, so the two events could not share a
+  second. **Rejected**, correctly: the run record's creation time can lag the event that caused it, so
+  the wait does not exclude it; and the test I added only asserted that the wait happens, not that the
+  race is closed. A test that proves a mechanism I cannot prove is a test of nothing.
+  **The conclusion, written down so no fourth mechanism gets proposed:** the GitHub API does not expose
+  which `pull_request` action created a run (`event` is `pull_request` for the draft's run and the
+  deciding one alike, and no field carries the action). Four mechanisms have now been tried against that
+  one missing fact — an excluded set, an id floor, the event's stamp, and a quiet second — and each was
+  defeated by it. The limitation is not in the rule; it is in the surface.
+  **Two structural ways out, and both are the human's call:**
+  - *One event.* Create the pull request already ready and let the `opened` run of this commit be the
+    one that decides. There is then nothing to attribute. Cost: the ritual loses its labelled-draft
+    phase, which S-specs record as part of the ported behaviour.
+  - *Refuse the ambiguity explicitly.* Answer `2` whenever the run cannot be *shown* to belong to the
+    event, which given the above means always unless the API grows the missing field. Cost: the verdict
+    becomes rare, and a ritual that usually says "unknown" is not used.
