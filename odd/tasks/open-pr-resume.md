@@ -35,15 +35,19 @@ identically in both and lands last.
   wired as its own `pack:check`. Keep its exported interface and its CLI output stable while that port
   is open, or say so first: the copy is literal, so a silent change here becomes a silent divergence
   there."
+- **S9 — FORGE-X1 accepted with two precisiones that make A executable.** "1. La identificación cambia
+  con el camino. En la creación se identifica por piso; en la adopción, por el pull request (`gh pr list
+  --head`)." — "2. Conjunto vacío tras adoptar → 2 nombrando el pull request adoptado, y la salida debe
+  decir que hubo adopción. Sin eso, un verde que vino de un run adoptado no es auditable."
 
 ## Tasks
 
 | Task | Specs | What | Evidence |
 | --- | --- | --- | --- |
 | T1 | S1, S2, S3 | `findRun` polls until the id set holds still; the verdict is read over the whole set: any red wins, all green is green, a set still growing at the budget is `2`. Tests rewritten to the set | `62a2cdb` |
-| T2 | S4, S5, S6 | On a failed creation, `gh pr list --head <head>`; adopt the pull request it names and continue, with its three cases | commit |
-| T3 | S7 | One clause in `AGENTS.md` naming the cost of a ready pull request | commit |
-| T4 | S8 | Answer `SEC-X1`; do not touch `scripts/pack-guard.js` while secure's port is open | log |
+| T2 | S4, S5, S6, S9 | On a failed creation, `gh pr list --head <head>`; adopt the pull request it names and continue, identified by head, with its three cases and the adopted-empty-set case | `517debc` |
+| T3 | S7 | One clause in `AGENTS.md` naming the cost of a ready pull request | `0f4a4be` |
+| T4 | S8 | Answer `SEC-X1`; do not touch `scripts/pack-guard.js` while secure's port is open | accepted, nothing changed |
 
 ## Log
 
@@ -108,3 +112,21 @@ identically in both and lands last.
   id it saw; a concluded run is read and not watched. Mutation repeated by hand: `isRed` forced to
   `false` fails exactly the four red-verdict tests (red-in-a-set, the run past the floor, the concluded
   failure, the grown set) and nothing else.
+- **L6.** User verbatim, relaying secure's answer: "FORGE-X1: aceptada" with two precisiones (S9), and on
+  the shared guard: "SEC-X1 está aceptado. Su propio 1759 lo escribió como T4/S8 —«pack-guard.js stays
+  untouched while secure copies it verbatim»—, que es exactamente el congelamiento que le pedí. No hace
+  falta que conteste aparte." For the record, the answer to relay if secure wants it written in the
+  agreed channel: `SEC-X1: aceptada` — no interface and no console output of `scripts/pack-guard.js`
+  changed in T1, T2 or T3, and none will while the port is open.
+- **L7.** T2 landed as `517debc`. Adoption is keyed on head, never on the floor: the creation identifies
+  the run by the floor it reads before firing, the adopted pull request identifies it by `gh pr list
+  --head <head> --json number,url`, and `findRun` is called with `floor: 0` on that path. Output says
+  `open-pr: adopted <url> — a pull request for <head> already existed, so none was created`, before any
+  wait, so a green from an adopted run is auditable. Cases: adopted → continues to the verdict; no pull
+  request → `RED`, `open-pr: gh pr create failed` plus gh's own words; a head nobody can read → `2`, never
+  red; adopted with no run → `2` naming the adopted pull request; a create that timed out keeps its
+  message and adopts nothing. Suite 271/271, `pack:check` green. Mutation: `floor: adopted ? 0 : floor`
+  replaced by `floor` fails exactly the adoption test (`pass 35, fail 1`) and nothing else.
+- **L8.** T3 landed as `0f4a4be`: the `AGENTS.md` bullet now states the price — an interrupted ritual
+  leaves a real pull request instead of a harmless draft, which is why the command adopts the pull
+  request of the head. Suite and `pack:check` green on the same tree.
