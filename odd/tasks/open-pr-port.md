@@ -148,3 +148,22 @@ and label `type:ci`; this file records the decisions that refine it, the task or
   elapsed-time accounting is a different question and is now used for the remaining budget (`findRun`),
   where both ends of the measurement are this process. The prohibition stands for identity; it never
   covered the wait's own stopwatch.
+- **L13.** The targeted validator **rejected** the second correction (`state: escalated`) with two
+  mechanical findings, and both are right:
+  - `R3-002`/`R3-003` (timeouts) and the `listRuns` contract were accepted as addressed.
+  - **`R3-004`/`R4-002` unmet, mechanically:** `findRun` computes the remaining budget and passes it to
+    `listRuns`, but `listRuns` calls the `gh` wrapper, and the wrapper ignores per-call options and always
+    uses `options.timeout * 1000`. The remaining budget never reaches the poll. A one-line class of bug.
+  - **`R3-001`/`R4-001` unmet, and this is the design conclusion:** a second read agreeing does not
+    discriminate, because the two states — "the deciding run has not been created yet" and "this is the
+    deciding run" — produce the same single candidate. The draft's run always has the smaller id and can
+    surface at any time, so **no poll over ids can tell them apart**. The id floor is a pre-filter, not
+    proof of provenance.
+  **What would actually close it.** Provenance has to come from the event, not from the ordering: read the
+  run's own `createdAt` and the `ready_for_review` event's `created_at` from the API, and require the run
+  to be at or after the event. That is the one clock comparison that is legitimate — the earlier
+  prohibition on clocks was about comparing this machine's clock with the API's, and here both ends come
+  from `gh`. The id floor stays as the cheap pre-filter; the provenance test replaces the second read.
+  A cheaper alternative, if the API call is not wanted: refuse (`2`) whenever the newest run of this
+  commit was created before the ready call could have taken effect, and say the deciding run could not be
+  attributed — a tool that says "I cannot tell" instead of "passed".
