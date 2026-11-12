@@ -57,18 +57,6 @@ test('fails when the run says success but a job did not, because the gate is the
   assert.match(verdict.reason, /outside success, skipped and neutral/);
 });
 
-test('does not call a green matrix a failure because the run summary disagrees with it', () => {
-  // The asymmetry is the point: a summary may not hide a red job, but it also may not invent one. A
-  // summary that says failure while every job says success is the stale field, and the honest answer
-  // is `2`.
-  const verdict = decideGate({ run: { ...COMPLETED, conclusion: 'failure' }, jobs: MATRIX });
-
-  assert.equal(verdict.code, UNKNOWN, 'a stale summary is undecided, not a red check');
-  assert.notEqual(verdict.code, FAIL);
-  assert.match(verdict.reason, /concluded failure while every job is accepted/);
-  assert.equal(verdict.lines.length, 3, 'the matrix still prints, so a reader can judge for themselves');
-});
-
 test('does not decide while the run is still going', () => {
   const verdict = decideGate({ run: { ...COMPLETED, status: 'in_progress', conclusion: null }, jobs: [] });
 
@@ -82,40 +70,23 @@ test('does not decide without a run, and says so instead of blaming the matrix',
   assert.match(decideGate({}).reason, /no run for this commit yet/);
 });
 
-test('does not pass a stale status, even when every job already concluded success', () => {
-  // Measured here: `gh pr checks --json state` has reported `IN_PROGRESS` for a job whose `conclusion`
-  // was `success` on a completed run. The run's own status says it has not finished, so the honest
-  // answer is `2` — never `1`, which is how a green run gets escalated as a problem.
-  const stale = { ...COMPLETED, status: 'IN_PROGRESS' };
-  const verdict = decideGate({ run: stale, jobs: MATRIX });
-
-  assert.equal(verdict.code, UNKNOWN, 'a stale status is undecided, and undecided is not failure');
-  assert.notEqual(verdict.code, FAIL);
-  assert.match(verdict.reason, /IN_PROGRESS/);
-});
-
-test('passes a push to main, where pr-policy reads skipped because it is guarded to pull requests', () => {
-  const push = [
-    { name: 'pr-policy', conclusion: 'skipped' },
-    { name: 'test (ubuntu-24.04, 22)', conclusion: 'success' },
-    { name: 'test (ubuntu-24.04, 24)', conclusion: 'success' },
-    { name: 'test (windows-2025, 22)', conclusion: 'success' },
-    { name: 'test (windows-2025, 24)', conclusion: 'success' },
-  ];
-  const verdict = decideGate({ run: COMPLETED, jobs: push });
-
-  assert.equal(verdict.code, PASS, 'the guard working is not a failure');
-  assert.match(verdict.lines[0], /pr-policy: skipped/);
-});
-
 test('reads the answer the API gives, and treats an unreadable one as no answer', () => {
   const { exec } = scripted([started([COMPLETED]), viewed(MATRIX)]);
   const answer = query(exec, '7ddd30d');
   assert.equal(answer.run.databaseId, COMPLETED.databaseId);
   assert.equal(answer.jobs.length, 3);
+  assert.equal(answer.problem, null, 'a readable answer has nothing to report');
 
-  const broken = scripted(['not json at all']);
-  assert.deepEqual(query(broken.exec, '7ddd30d'), { run: null, jobs: [] });
+  const broken = scripted(['boom']);
+  // The shape keeps the failure: the same `run: null, jobs: []` used to mean "no run", "no login"
+  // and "not JSON" at once, and the reader was told the first.
+  const unreadable = query(broken.exec, '7ddd30d');
+  assert.equal(unreadable.run, null);
+  assert.deepEqual(unreadable.jobs, []);
+  assert.match(unreadable.problem, /gh run list failed/);
+
+  const garbled = scripted([{ ok: true, stdout: 'not json at all' }]);
+  assert.match(query(garbled.exec, '7ddd30d').problem, /not JSON/);
 });
 
 test('returns as soon as the run appears, without waiting out the timeout', async () => {
@@ -185,28 +156,6 @@ test('the command line asks for the full commit, because an abbreviated one answ
   assert.doesNotMatch(calls[0], /--commit 7ddd30d /, 'the abbreviated form never reaches the API');
 });
 
-test('every child process it starts is bounded by the wait, so a stalled gh cannot hang it', async () => {
-  // `gh` on a network stall, or waiting for a credential nobody will supply, never returns. The poll
-  // would then hold the process open past the timeout it promised and exit with nothing at all.
-  const fullSha = '7ddd30d0bae816d390572c05e4610070ccd4d26e';
-  const bounded = [];
-  const spawn = (command, args, options) => {
-    bounded.push({ command, options });
-    if (command === 'git') return { status: 0, stdout: `${fullSha}\n` };
-    const answer = args[1] === 'list' ? [COMPLETED] : { jobs: MATRIX };
-    return { status: 0, stdout: JSON.stringify(answer) };
-  };
-  const out = capture();
-
-  const code = await run({ argv: ['7ddd30d', '--timeout', '30'], spawn, sleep: async () => {}, out });
-
-  assert.equal(code, PASS);
-  assert.ok(bounded.length >= 3, 'the pass went through git and both gh answers');
-  for (const { command, options } of bounded) {
-    assert.equal(options.timeout, 30_000, `${command} is bounded by the wait, not by the network`);
-  }
-});
-
 test('a wait that is still undecided says so once per change, so it never looks hung', async () => {
   const { exec } = scripted([
     started([{ ...COMPLETED, status: 'in_progress', conclusion: null }]),
@@ -221,4 +170,136 @@ test('a wait that is still undecided says so once per change, so it never looks 
   assert.equal(code, PASS);
   assert.equal(out.text.match(/the run is in_progress/g).length, 1, 'one line, not one per attempt');
   assert.match(out.text, /wait-for-ci: passed/);
+});
+
+test('a green matrix is not vetoed by a summary that disagrees with it', () => {
+  // The matrix is the gate; the summary is the field this command exists to survive. A summary that
+  // says cancelled while every job succeeded is a run nobody can decide yet, never a red check: the
+  // answer used to be 1, which says "it broke" about something that did not.
+  const verdict = decideGate({
+    run: { databaseId: 9, status: 'completed', conclusion: 'cancelled' },
+    jobs: [{ name: 'test (ubuntu-24.04, 22)', conclusion: 'success' }],
+  });
+
+  assert.equal(verdict.code, UNKNOWN);
+  assert.equal(verdict.state, 'unknown');
+  assert.match(verdict.reason, /every job is accepted/);
+});
+
+test('does not decide a run whose status is still IN_PROGRESS while every job has concluded', () => {
+  // The status field lags the jobs: a run reports `IN_PROGRESS` after its matrix is already green.
+  // `2` is the honest answer for a stale field; `1` would say the push broke something that passed.
+  const verdict = decideGate({
+    run: { databaseId: 11, status: 'IN_PROGRESS', conclusion: null },
+    jobs: [...MATRIX, { name: 'test (windows-2025, 22)', conclusion: 'success' }],
+  });
+
+  assert.equal(verdict.code, UNKNOWN, 'a stale status is undecided, never a red check');
+  assert.equal(verdict.state, 'unknown');
+  assert.match(verdict.reason, /IN_PROGRESS/);
+});
+
+test('passes a push to main where the guarded pr-policy job reads skipped', () => {
+  // `pr-policy` is guarded to pull request events, so on a push to `main` it is `skipped` while all
+  // four `test (...)` jobs pass. The guard working is not a failure to investigate.
+  const verdict = decideGate({
+    run: { databaseId: 12, status: 'completed', conclusion: 'success' },
+    jobs: [
+      { name: 'pr-policy', conclusion: 'skipped' },
+      { name: 'test (ubuntu-24.04, 22)', conclusion: 'success' },
+      { name: 'test (ubuntu-24.04, 24)', conclusion: 'success' },
+      { name: 'test (windows-2025, 22)', conclusion: 'success' },
+      { name: 'test (windows-2025, 24)', conclusion: 'success' },
+    ],
+  });
+
+  assert.equal(verdict.code, PASS, 'skipped is an accepted conclusion, not a rejection');
+  assert.equal(verdict.state, 'passed');
+  assert.equal(verdict.lines.length, 5, 'the reader still sees the whole matrix');
+});
+
+test('every child process is bounded by the wait budget', async () => {
+  const { childOptions } = await import('../scripts/wait-for-ci.js');
+  const options = childOptions(30_000);
+
+  assert.equal(options.timeout, 30_000, 'an unbounded gh on a network stall never fails, it hangs');
+  assert.equal(options.encoding, 'utf8');
+});
+
+/** An exec that answers every call with the same result. */
+const always = (result) => () => result;
+
+/** A `gh` that fails, the way an unauthenticated one does. */
+const failing = always({ ok: false, stdout: '', stderr: 'HTTP 401: Bad credentials' });
+
+test('a query that failed says so instead of claiming no run exists', () => {
+  const answer = query(failing, 'a'.repeat(40));
+
+  // The difference between "there is no run yet" and "I could not ask" is the whole value of the
+  // message: the first tells the reader to wait, the second tells them to log in.
+  assert.equal(answer.run, null);
+  assert.match(answer.problem, /401/, 'the failure travels with the answer');
+});
+
+test('a commit with no run yet has no problem to report', () => {
+  const answer = query(always({ ok: true, stdout: '[]', stderr: '' }), 'a'.repeat(40));
+
+  assert.equal(answer.run, null);
+  assert.equal(answer.problem, null, 'waiting is not a failure');
+});
+
+test('a run whose jobs cannot be read reports that, not "no job"', () => {
+  const exec = (args) => {
+    if (args[0] === 'run' && args[1] === 'list') {
+      return { ok: true, stdout: JSON.stringify([{ databaseId: 7, status: 'completed', conclusion: 'success' }]), stderr: '' };
+    }
+    return { ok: false, stdout: '', stderr: 'gh: Not Found (HTTP 404)' };
+  };
+
+  const answer = query(exec, 'a'.repeat(40));
+
+  assert.equal(answer.run.databaseId, 7);
+  assert.match(answer.problem, /404/);
+});
+
+test('the timeout names the last real failure instead of guessing', async () => {
+  const out = capture();
+
+  const code = await wait({
+    sha: 'a'.repeat(40),
+    exec: failing,
+    sleep: async () => {},
+    out,
+    timeoutSeconds: 1,
+    intervalSeconds: 1,
+  });
+
+  // Exit 2 is right either way; the reason is what a reader acts on. "No run for this commit yet"
+  // sends them to wait for something that will never arrive.
+  assert.equal(code, 2);
+  assert.match(out.text, /401/, 'the reason names what actually failed');
+  assert.doesNotMatch(out.text, /no run for this commit yet/, 'it must not claim a measurement it did not take');
+});
+
+test('a failure on an early attempt is not reported as every attempt', async () => {
+  // The finding the refuter confirmed: `lastProblem` was assigned but never cleared, so one transient
+  // failure at the start of a long wait was printed as `(every attempt)` — a false claim about the
+  // window, in the change whose whole point was to stop making false claims. The last attempt is the
+  // one the answer is about.
+  const answers = [{ ok: false, stdout: '', stderr: 'HTTP 401: Bad credentials' }];
+  const exec = () => {
+    const answer = answers.length > 0 ? answers.shift() : { ok: true, stdout: '[]', stderr: '' };
+    return answer;
+  };
+  const out = capture();
+
+  const code = await wait({ sha: 'a'.repeat(40), exec, sleep: async () => {}, out, timeoutSeconds: 2, intervalSeconds: 1 });
+
+  assert.equal(code, UNKNOWN);
+  // Two halves matter. The attempt that failed said so at the time, because it did fail; the reason
+  // the command ends on must describe the last attempt, not the window.
+  const reasons = out.text.split('\n').filter((line) => line.startsWith('wait-for-ci  '));
+  assert.match(reasons[0], /401/, 'the failing attempt reported itself');
+  assert.doesNotMatch(reasons.at(-1), /401/, 'the last attempt did not fail, so the reason must not say it did');
+  assert.match(reasons.at(-1), /no run for this commit yet/);
 });

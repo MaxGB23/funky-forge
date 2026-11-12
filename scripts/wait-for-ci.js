@@ -9,9 +9,9 @@
  *
  * The accepted conclusions are the ones `AGENTS.md` names for the merge gate. A run whose own
  * conclusion says success but which carries a failed job is a failure here, because the gate is the
- * matrix and not the run's summary. The reverse is not symmetric: a summary that disagrees with a
- * green matrix is the stale field that once reported a green run as a problem, so it is unknown and
- * never a failure.
+ * matrix and not the run's summary. The other direction is not a failure either: a summary that
+ * disagrees with a green matrix is the stale field this command exists to survive, so it is unknown
+ * and never red.
  */
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
@@ -26,10 +26,17 @@ const DEFAULT_TIMEOUT_SECONDS = 900;
 const DEFAULT_INTERVAL_SECONDS = 15;
 
 /**
+ * The gate, as a function of what the API answered. No clock, no process: the three callers — the
+ * command line, the tests and any later reader — cannot disagree about what a given answer means.
+ *
+ * @param {{ run?: { databaseId?: number, status?: string, conclusion?: string } | null, jobs?: Array<{ name?: string, conclusion?: string }> }} answer
+ * @returns {{ code: number, state: 'passed'|'failed'|'unknown', reason: string, lines: string[] }}
+ */
+/**
  * The options every child process gets. The timeout is not a nicety: `gh` on a network stall, or
- * waiting for a credential it will never be given, does not return, and a poll that cannot return is
- * a hang wearing the costume of a wait. Bounded by the wait's own budget, so `--timeout 30` cannot
- * take minutes because one call blocked.
+ * `git` on a lock another process holds, does not fail — it hangs, and a wait that never returns is a
+ * hang wearing the costume of a wait. Bounded by the wait's own budget, so `--timeout 30` cannot spend
+ * longer than 30 seconds inside one child.
  *
  * @param {number} timeoutMs
  */
@@ -37,13 +44,6 @@ export function childOptions(timeoutMs) {
   return { encoding: 'utf8', timeout: timeoutMs };
 }
 
-/**
- * The gate, as a function of what the API answered. No clock, no process: the three callers — the
- * command line, the tests and any later reader — cannot disagree about what a given answer means.
- *
- * @param {{ run?: { databaseId?: number, status?: string, conclusion?: string } | null, jobs?: Array<{ name?: string, conclusion?: string }> }} answer
- * @returns {{ code: number, state: 'passed'|'failed'|'unknown', reason: string, lines: string[] }}
- */
 export function decideGate({ run = null, jobs = [] } = {}) {
   const list = Array.isArray(jobs) ? jobs : [];
 
@@ -91,6 +91,19 @@ export function decideGate({ run = null, jobs = [] } = {}) {
 }
 
 /**
+ * One line naming what a `gh` call could not do, taken from what it printed. A failure that says only
+ * "not ok" leaves the reader to guess between a missing run, a missing login and a broken network.
+ *
+ * @param {string} step
+ * @param {{ stderr?: string } | undefined} answer
+ * @returns {string}
+ */
+function describe(step, answer) {
+  const detail = String(answer?.stderr ?? '').trim().split('\n')[0];
+  return detail === '' ? `${step} failed` : `${step} failed: ${detail}`;
+}
+
+/**
  * Asks the API about one commit, through the answer shapes `decideGate` reads.
  *
  * @param {(args: string[]) => { ok: boolean, stdout: string }} exec
@@ -99,26 +112,28 @@ export function decideGate({ run = null, jobs = [] } = {}) {
  */
 export function query(exec, sha) {
   const listed = exec(['run', 'list', '--commit', sha, '--limit', '1', '--json', 'databaseId,status,conclusion']);
-  if (!listed.ok) return { run: null, jobs: [] };
+  if (!listed.ok) return { run: null, jobs: [], problem: describe('gh run list', listed) };
 
   let runs;
   try {
     runs = JSON.parse(listed.stdout);
   } catch {
-    return { run: null, jobs: [] };
+    return { run: null, jobs: [], problem: 'gh run list printed something that is not JSON' };
   }
-  if (!Array.isArray(runs) || runs.length === 0) return { run: null, jobs: [] };
+  // An empty list is a measurement: the API answered, and this commit has no run. That is the one
+  // case where "no run yet" is true, so it is also the only case with nothing to report.
+  if (!Array.isArray(runs) || runs.length === 0) return { run: null, jobs: [], problem: null };
 
   const run = runs[0];
-  if (run?.status !== 'completed') return { run, jobs: [] };
+  if (run?.status !== 'completed') return { run, jobs: [], problem: null };
 
   const viewed = exec(['run', 'view', String(run.databaseId), '--json', 'jobs']);
-  if (!viewed.ok) return { run, jobs: [] };
+  if (!viewed.ok) return { run, jobs: [], problem: describe('gh run view', viewed) };
   try {
     const parsed = JSON.parse(viewed.stdout);
-    return { run, jobs: Array.isArray(parsed?.jobs) ? parsed.jobs : [] };
+    return { run, jobs: Array.isArray(parsed?.jobs) ? parsed.jobs : [], problem: null };
   } catch {
-    return { run, jobs: [] };
+    return { run, jobs: [], problem: 'gh run view printed something that is not JSON' };
   }
 }
 
@@ -143,9 +158,13 @@ export async function wait({
 
   let verdict = decideGate({ run: null, jobs: [] });
   let lastReason = null;
+  let lastProblem = null;
   for (let attempt = 0; attempt <= attempts; attempt += 1) {
     const answer = query(exec, sha);
     verdict = decideGate(answer);
+    // The last attempt is the one the answer is about, so this is assigned rather than accumulated:
+    // a transient failure at the start of a long wait must not be reported as if it covered the window.
+    lastProblem = answer.problem ?? null;
 
     if (verdict.code !== UNKNOWN) {
       out.write(`wait-for-ci  ${sha}  ·  ${verdict.reason}\n`);
@@ -156,18 +175,22 @@ export async function wait({
 
     // A wait that prints nothing is indistinguishable from a hang, which is how a 15-minute default
     // looked like a stuck command the first time this ran. One line per change of answer, no line for
-    // a repeated one.
-    if (verdict.reason !== lastReason) {
-      out.write(`wait-for-ci  ${sha}  ·  ${verdict.reason}\n`);
-      lastReason = verdict.reason;
+    // a repeated one. When the call itself failed, that is the answer: a progress line saying "no run
+    // yet" while `gh` is answering 401 is the message that sends a reader to wait for nothing.
+    const shown = answer.problem ?? verdict.reason;
+    if (shown !== lastReason) {
+      out.write(`wait-for-ci  ${sha}  ·  ${shown}\n`);
+      lastReason = shown;
     }
 
     if (attempt < attempts) await sleep(interval * 1000);
   }
 
   // The last answer is kept: a timeout on a run that was still going names the run, and a timeout
-  // with no run at all says so instead of blaming the matrix.
-  out.write(`wait-for-ci  ${sha}  ·  ${verdict.reason}\n`);
+  // with no run at all says so instead of blaming the matrix. When a call itself failed, that is what
+  // is named: "no run for this commit yet" sends a reader to wait for something that will never come.
+  const exhausted = lastProblem === null ? verdict.reason : `${lastProblem} (the last attempt)`;
+  out.write(`wait-for-ci  ${sha}  ·  ${exhausted}\n`);
   for (const line of verdict.lines) out.write(`${line}\n`);
   out.write(
     `wait-for-ci: unknown — gave up after ${timeoutSeconds}s; this is not a failure, ask the API again\n`,
@@ -183,7 +206,7 @@ export async function wait({
  * would read as "no run yet" and wait out the whole timeout for. That is what happened on the first
  * run of this script against its own merge commit.
  *
- * @param {{ argv?: string[], exec?: Function, spawn?: Function, sleep?: Function, out?: { write: Function }, resolveSha?: (arg: string) => string }} [deps]
+ * @param {{ argv?: string[], exec?: Function, sleep?: Function, out?: { write: Function }, resolveSha?: (arg: string) => string }} [deps]
  * @returns {Promise<number>}
  */
 export async function run(deps = {}) {
@@ -197,32 +220,34 @@ export async function run(deps = {}) {
     return Number.isFinite(value) && value > 0 ? value : fallback;
   };
 
+  // One budget for the wait and for each child it starts, so a stalled `gh` cannot outlive the wait
+  // that is supposed to end it.
+  const childTimeoutMs = option('timeout', DEFAULT_TIMEOUT_SECONDS) * 1000;
+
+  const exec =
+    deps.exec ??
+    ((args) => {
+      const result = spawnSync('gh', args, childOptions(childTimeoutMs));
+      return { ok: result.status === 0, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
+    });
+  const sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const resolveSha =
+    deps.resolveSha ??
+    ((argument) => {
+      const result = spawnSync(
+        'git',
+        ['rev-parse', '--verify', `${argument}^{commit}`],
+        childOptions(childTimeoutMs),
+      );
+      return result.status === 0 ? result.stdout.trim() : argument;
+    });
+
   const positional = argv.filter((argument, index) => {
     if (argument.startsWith('--')) return false;
     const previous = argv[index - 1];
     return previous !== '--timeout' && previous !== '--interval';
   });
   const sha = positional[0];
-  const timeoutSeconds = option('timeout', DEFAULT_TIMEOUT_SECONDS);
-  const intervalSeconds = option('interval', DEFAULT_INTERVAL_SECONDS);
-
-  // A child process that never returns would hold the process open past the wait it belongs to, so
-  // every call carries the wait's own budget as its ceiling.
-  const spawn = deps.spawn ?? spawnSync;
-  const callOptions = childOptions(Math.max(1, timeoutSeconds) * 1000);
-  const exec =
-    deps.exec ??
-    ((args) => {
-      const result = spawn('gh', args, callOptions);
-      return { ok: result.status === 0, stdout: result.stdout ?? '' };
-    });
-  const sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
-  const resolveSha =
-    deps.resolveSha ??
-    ((argument) => {
-      const result = spawn('git', ['rev-parse', '--verify', `${argument}^{commit}`], callOptions);
-      return result.status === 0 ? result.stdout.trim() : argument;
-    });
 
   if (typeof sha !== 'string' || sha === '') {
     out.write('wait-for-ci: a commit is required: node scripts/wait-for-ci.js <commit>\n');
@@ -234,8 +259,8 @@ export async function run(deps = {}) {
     exec,
     sleep,
     out,
-    timeoutSeconds,
-    intervalSeconds,
+    timeoutSeconds: option('timeout', DEFAULT_TIMEOUT_SECONDS),
+    intervalSeconds: option('interval', DEFAULT_INTERVAL_SECONDS),
   });
 }
 
