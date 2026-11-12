@@ -197,14 +197,15 @@ export function failingCount(output) {
 }
 
 /**
- * Polls for a run of one commit past the floor until one appears or the attempts run out. The bound is a
- * count of attempts rather than a clock, so a test drives it without waiting and a real wait still stops.
+ * Polls for the runs of one commit past the floor until the set of them holds still or the attempts run
+ * out. The bound is a count of attempts rather than a clock, so a test drives it without waiting.
  *
- * Every candidate is answered, not the first one found: two runs past the floor cannot be told apart,
- * and choosing between them is the reading this replaced.
+ * A single candidate is not a decision: the `opened` run `gh pr create --draft` fires carries this same
+ * commit and can become visible only after the floor was read, so a poll can see it alone and report the
+ * draft's verdict before the deciding run exists. A set is decided when a second read agrees with it.
  *
  * @param {{ exec: Function, head: string, repo?: string|null, sha: string, floor?: number, sleep: (ms: number) => Promise<void>, timeoutSeconds?: number, intervalSeconds?: number }} options
- * @returns {Promise<{ candidates: Array<object>, sha: string, spentSeconds: number }>}
+ * @returns {Promise<{ candidates: Array<object>, sha: string, spentSeconds: number, timedOut: boolean, unstable: string[] }>}
  */
 export async function findRun({
   exec,
@@ -219,15 +220,49 @@ export async function findRun({
   const interval = Math.max(1, intervalSeconds);
   const attempts = Math.max(0, Math.ceil(Math.max(1, timeoutSeconds) / interval));
 
+  // What the wait has spent, so a poll is bounded by what is left of the budget, not by the whole of it.
+  const started = Date.now();
+  const spent = () => Math.min(timeoutSeconds, (Date.now() - started) / 1000);
+  const poll = () => {
+    const remaining = Math.max(1, Math.ceil(timeoutSeconds - spent()));
+    const { runs, timedOut } = listRuns(exec, { head, repo, timeoutMs: remaining * 1000 });
+    return { candidates: runs === null ? [] : runsPastFloor(runs, sha, floor), timedOut };
+  };
+  const done = (fields) =>
+    ({ candidates: [], sha, spentSeconds: spent(), timedOut: false, unstable: [], ...fields });
+  const idsOf = (runs) => runs.map((run) => String(run.databaseId));
+
   for (let attempt = 0; attempt <= attempts; attempt += 1) {
-    const runs = listRuns(exec, { head, repo, timeoutMs: timeoutSeconds * 1000 });
-    const candidates = runsPastFloor(runs ?? [], sha, floor);
-    if (candidates.length > 0) return { candidates, sha, spentSeconds: attempt * interval };
+    const first = poll();
+    // A poll nobody answered ends the wait: it is evidence of nothing, and a retry spends the budget of
+    // the poll that did answer.
+    if (first.timedOut === true) return done({ timedOut: true });
+    if (first.candidates.length === 1) {
+      await sleep(interval * 1000);
+      const second = poll();
+      if (second.timedOut === true) return done({ timedOut: true });
+      if (idsOf(first.candidates).join(',') === idsOf(second.candidates).join(',')) {
+        return done({ candidates: second.candidates });
+      }
+      return done({ unstable: [...new Set([...idsOf(first.candidates), ...idsOf(second.candidates)])] });
+    }
+
+    // Two or more at once say nothing about which event fired which run, so none is chosen.
+    if (first.candidates.length > 1) return done({ candidates: first.candidates });
 
     if (attempt < attempts) await sleep(interval * 1000);
   }
 
-  return { candidates: [], sha, spentSeconds: attempts * interval };
+  return done({});
+}
+
+/**
+ * A child that reached its ceiling did not fail: it did not answer, so the state it left behind is named
+ * and the answer is unknown rather than red.
+ */
+function unanswered(stream, step, ceiling, left) {
+  stream.write(`open-pr: unknown — ${step} did not answer within ${ceiling}, so ${left}; this is not a failure\n`);
+  return UNKNOWN;
 }
 
 /**
@@ -273,8 +308,10 @@ export async function run(deps = {}) {
   // hangs.
   const gh = (args) => exec(args, { timeoutMs: options.timeout * 1000 });
 
-  // 1. The suite. A branch that does not parse is cheaper to fix here than in a run nobody watches.
+  // 1. The suite. A branch that does not parse is cheaper to fix here than in a run nobody watches. A
+  // child killed at its ceiling did not fail; it did not answer.
   const tested = suite();
+  if (tested?.timedOut === true) return unanswered(out, 'the suite', `its ceiling of ${SUITE_TIMEOUT_MS / 1000}s`, 'nothing was created and its verdict is unknown');
   if (!tested.ok) {
     const count = failingCount(tested.stdout);
     const named = count === null ? '' : ` (${count} failing test${count === 1 ? '' : 's'})`;
@@ -289,6 +326,7 @@ export async function run(deps = {}) {
   // found after publication if it is found at all. The gate names itself and its own command: a
   // refusal that reuses another step's words cannot be told apart from that step's.
   const packed = pack();
+  if (packed?.timedOut === true) return unanswered(out, `the packed-set gate (${PACK_SCRIPT})`, `its ceiling of ${PACK_TIMEOUT_MS / 1000}s`, 'nothing was created and its verdict is unknown');
   if (packed !== null && packed.ok !== true) {
     err.write(`open-pr: refusing: the packed-set gate (${PACK_SCRIPT}) is red, so nothing was created\n`);
     // The gate's own words, because "the packed set is not the files contract" means nothing without
@@ -335,7 +373,7 @@ export async function run(deps = {}) {
   // creation itself fires be the only run above it, which is the false green this criterion replaces,
   // moved rather than closed. The floor is the second read below, taken when it can mean something.
   const gate = listRuns(gh, { head, repo: options.repo });
-  if (gate === null) {
+  if (gate.runs === null) {
     err.write('open-pr: refusing: the runs of this branch cannot be read, so nothing was created\n');
     return UNKNOWN;
   }
@@ -360,6 +398,10 @@ export async function run(deps = {}) {
     ]),
   );
 
+  // The creation may have happened and nobody answered whether it did: a guess either duplicates the
+  // pull request or claims a failure that may not exist.
+  if (created?.timedOut === true) return unanswered(out, 'gh pr create', `its ceiling of ${options.timeout}s`, `whether a draft was created cannot be told: check gh pr list --head ${head} before rerunning`);
+
   const pullRequest = pullRequestFrom(created?.stdout);
   if (created?.ok !== true || pullRequest === null) {
     err.write('open-pr: gh pr create failed\n');
@@ -377,16 +419,17 @@ export async function run(deps = {}) {
   // of ids could not say that: it can grow after it is read. A floor that cannot be read refuses
   // instead, and a draft that never fires the deciding event is harmless, where a guess is not.
   const before = listRuns(gh, { head, repo: options.repo });
-  if (before === null) {
+  if (before.runs === null) {
     out.write(
       `open-pr: unknown — the runs of this branch cannot be read, so no floor can be taken: the draft ${pullRequest.url} was created and deliberately not marked ready, so the event that decides was never fired; this is not a failure\n`,
     );
     return UNKNOWN;
   }
-  const floor = floorOf(before, sha);
+  const floor = floorOf(before.runs, sha);
 
   // 5. This fires the event that decides.
   const ready = gh(withRepo(options.repo, ['pr', 'ready', String(pullRequest.number)]));
+  if (ready?.timedOut === true) return unanswered(out, `gh pr ready ${pullRequest.number}`, `its ceiling of ${options.timeout}s`, `the draft ${pullRequest.url} was created and may or may not be ready, and the run that decides it cannot be told`);
   // A ready that changed nothing fired no event, so no run past the floor belongs to it: whatever the
   // branch has was caused by something else, and reading a verdict out of it would judge that instead.
   if (alreadyReady(ready)) {
@@ -414,6 +457,14 @@ export async function run(deps = {}) {
     timeoutSeconds: options.timeout,
     intervalSeconds: DEFAULT_INTERVAL_SECONDS,
   });
+
+  if (found.timedOut === true) return unanswered(out, 'a run list poll', 'its remaining budget', `no run of ${sha} could be read past the floor of ${floor}, and the draft ${pullRequest.url} was created and marked ready`);
+
+  // A set that did not hold still across two reads is a question, not an answer.
+  if (found.unstable.length > 0) {
+    out.write(`open-pr: unknown — the runs of ${sha} past the floor of ${floor} changed while they were read (${found.unstable.join(', ')}), so which one the ready event fired cannot be told and none was chosen; this is not a failure\n`);
+    return UNKNOWN;
+  }
 
   const ids = found.candidates.map((candidate) => String(candidate.databaseId));
 
@@ -520,7 +571,9 @@ export function suiteOptions() {
 
 function defaultSuite() {
   const result = spawnSync(process.execPath, ['--test'], suiteOptions());
-  return { ok: result.status === 0, stdout: `${result.stdout ?? ''}${result.stderr ?? ''}` };
+  // A kill leaves no status: the ceiling was reached, which is not a failing test.
+  const timedOut = result.status === null;
+  return { ok: result.status === 0, timedOut, stdout: `${result.stdout ?? ''}${result.stderr ?? ''}` };
 }
 
 /** A packed-set gate that runs longer than this is not slow: `npm pack` is stuck on a cache or a lock. */
@@ -548,7 +601,8 @@ function defaultPack() {
   if (!existsSync(join(ROOT, PACK_SCRIPT))) return null;
 
   const result = spawnSync(process.execPath, [PACK_SCRIPT], packOptions());
-  return { ok: result.status === 0, stdout: `${result.stdout ?? ''}${result.stderr ?? ''}` };
+  const timedOut = result.status === null;
+  return { ok: result.status === 0, timedOut, stdout: `${result.stdout ?? ''}${result.stderr ?? ''}` };
 }
 
 /** A local git call that takes longer than this is not slow: it is stuck on a lock. */
@@ -613,19 +667,20 @@ function withRepo(repo, args) {
 }
 
 /**
- * @param {(args: string[], options?: object) => { ok: boolean, stdout?: string }} exec
+ * @param {(args: string[], options?: object) => { ok: boolean, stdout?: string, timedOut?: boolean }} exec
  * @param {{ head: string, repo?: string|null, timeoutMs?: number }} target
- * @returns {Array<object>|null} the runs of that branch, newest first, or `null` when the API cannot
- *   answer — an empty list is a measurement, a failed call is not, and the two cannot share an answer
+ * @returns {{ runs: Array<object>|null, timedOut: boolean }} the runs of that branch, newest first, or
+ *   `null` when the API cannot answer — an empty list is a measurement, a failed call is not, and the
+ *   two cannot share an answer. A call killed at its ceiling is reported apart from a refusal.
  */
 function listRuns(exec, { head, repo = null, timeoutMs }) {
   const answer = exec(withRepo(repo, ['run', 'list', '--branch', head, '--json', RUN_FIELDS]), {
     timeoutMs,
   });
-  if (answer?.ok !== true) return null;
+  if (answer?.ok !== true) return { runs: null, timedOut: answer?.timedOut === true };
 
   const runs = parseJson(answer.stdout);
-  return Array.isArray(runs) ? runs : [];
+  return { runs: Array.isArray(runs) ? runs : [], timedOut: false };
 }
 
 /**

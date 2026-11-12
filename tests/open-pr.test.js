@@ -747,3 +747,84 @@ test('a commit that cannot be resolved refuses and creates nothing', async (t) =
   assert.match(err.text, /cannot be resolved/);
   assert.equal(calls.length, 0, 'the refusal comes before the first gh call');
 });
+
+/** The half of the ritual a case is not about, answered green: each case states only the step it is. */
+function frontHalf(t, overrides) {
+  const out = capture();
+  const err = capture();
+  const deps = {
+    argv: argvFor(bodyFile(t, BODY)),
+    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
+    pack: packGuard(PACK_GREEN),
+    resolveSha: () => SHA,
+    sleep: async () => {},
+    out,
+    err,
+    ...overrides,
+  };
+  return { out, err, deps };
+}
+
+test('a poll that sees the draft run alone is not a decision, because the set grew', async (t) => {
+  // The floor was read before the `opened` run was visible, so the first poll sees it alone and green;
+  // the run the ready event fired appears while the second read is taken.
+  const draft = { databaseId: 1001, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const deciding = { databaseId: 1002, headSha: SHA, status: 'in_progress', conclusion: null };
+  const { exec, calls } = gh({ snapshot: [], runs: [[draft], [draft, deciding]] });
+  const { out, deps } = frontHalf(t, { exec });
+  assert.equal(await run(deps), UNKNOWN, 'the draft run alone is not what the ready event fired');
+  assert.doesNotMatch(out.text, /passed/, 'never green, however green the draft run was');
+  assert.match(out.text, /1001, 1002/, 'both ids are named, so the answer can be audited');
+  assert.ok(!calls.some((call) => call.startsWith('run watch')), 'no run is watched on a set that did not hold still');
+});
+
+test('one run that is still the only one on the second read decides on the matrix', async (t) => {
+  const deciding = { databaseId: 1002, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const { exec, calls } = gh({ snapshot: [], runs: [deciding] });
+  const { out, err, deps } = frontHalf(t, { exec });
+  assert.equal(await run(deps), GREEN, err.text);
+  assert.equal(calls.filter((call) => call.startsWith('run list')).length, 4, 'the snapshot, the floor, two polls');
+  assert.match(out.text, /·  passed/, 'the verdict comes from the matrix of that run');
+});
+
+test('a poll that does not answer ends the wait as unknown, and is not retried', async (t) => {
+  const { exec: answered, calls } = gh({ snapshot: [] });
+  let lists = 0;
+  const exec = (args, options) => {
+    if (args[0] === 'run' && args[1] === 'list') lists += 1;
+    return lists > 2 ? { ok: false, stdout: '', stderr: '', timedOut: true } : answered(args, options);
+  };
+  const { out, deps } = frontHalf(t, { exec });
+  assert.equal(await run(deps), UNKNOWN, 'a poll nobody answered is not a failed check');
+  assert.match(out.text, /did not answer within its remaining budget/);
+  assert.equal(lists, 3, 'not retried: a retry spends the budget of a poll that did answer');
+});
+
+test('a create or a ready that does not answer is unknown, never red', async (t) => {
+  const { exec: answered } = gh();
+  const hangCreate = (args, options) =>
+    args[0] === 'pr' && args[1] === 'create' ? { ok: false, stdout: '', stderr: '', timedOut: true } : answered(args, options);
+  const created = frontHalf(t, { exec: hangCreate });
+  assert.equal(await run(created.deps), UNKNOWN, 'a create killed at its ceiling did not fail');
+  assert.match(created.out.text, /create did not answer within its ceiling of 30s, so whether a draft was created cannot be told/);
+
+  const { exec: readyAnswered } = gh({ snapshot: [] });
+  const hangReady = (args, options) =>
+    args[0] === 'pr' && args[1] === 'ready' ? { ok: false, stdout: '', stderr: '', timedOut: true } : readyAnswered(args, options);
+  const readied = frontHalf(t, { exec: hangReady });
+  assert.equal(await run(readied.deps), UNKNOWN, 'a ready killed at its ceiling did not fail');
+  assert.match(readied.out.text, /ready 42 did not answer within its ceiling of 30s, so the draft .* was created and may or may not be ready/);
+});
+
+test('a suite or a packed set that does not answer is unknown, never red', async (t) => {
+  const { exec, calls } = gh();
+  const untested = frontHalf(t, { exec, suite: () => ({ ok: false, timedOut: true, stdout: 'ℹ fail 1\n' }) });
+  assert.equal(await run(untested.deps), UNKNOWN, 'a suite killed at its ceiling did not fail');
+  assert.match(untested.out.text, /the suite did not answer within its ceiling of 900s/);
+  assert.equal(calls.length, 0, 'nothing is created on an answer nobody gave');
+
+  const unpacked = frontHalf(t, { exec, pack: () => ({ ok: false, timedOut: true, stdout: 'pack-guard: still packing\n' }) });
+  assert.equal(await run(unpacked.deps), UNKNOWN, 'a packed set killed at its ceiling did not fail');
+  assert.match(unpacked.out.text, /did not answer within its ceiling of 120s/);
+  assert.equal(calls.length, 0, 'still nothing is created');
+});

@@ -131,3 +131,20 @@ and label `type:ci`; this file records the decisions that refine it, the task or
   Taking the floor only before the creation (the first implementation) leaves floor `0` in the common
   case, so the `opened` run is still the sole candidate above it and the false green survives: the
   placement is part of the criterion, not a detail of it.
+- **L12.** The second review (`review-5c63c4b2448a0e3b`) confirmed six findings that were again three
+  defects, all in the same decision:
+  - **A single candidate is not a decision.** The `opened` run is created before the deciding one but can
+    become visible after the floor was read, and a floor read while it was invisible is `0` — so a poll
+    could see it alone and report the draft's verdict. The criterion is now a property, not a mechanism:
+    a set decides only when a second read one interval later agrees. One id twice decides; a set that
+    grew is `2` naming both ids. No dependence on drafts and none on the clock.
+  - **A timeout is never a red gate.** The suite, the packed set, `gh pr create` and `gh pr ready` read
+    only `ok`, so a child killed at its ceiling was reported as `1`. All four answer `2` now, each naming
+    the state it may have left behind, through one `unanswered()` helper so the wording cannot drift.
+  - **Each poll spends the remaining budget**, not the whole one: a stalled `run list` on every attempt
+    used to cost `attempts × timeout`.
+  **Errata to L10.** L10 forbids `Date.now()` and `createdAt`. The constraint is about *identifying and
+  ordering runs* — the floor is an id precisely because the API's clock is not this machine's. Local
+  elapsed-time accounting is a different question and is now used for the remaining budget (`findRun`),
+  where both ends of the measurement are this process. The prohibition stands for identity; it never
+  covered the wait's own stopwatch.
