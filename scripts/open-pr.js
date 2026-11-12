@@ -568,7 +568,6 @@ export async function run(deps = {}) {
     // delay a verdict that cannot change. Each call is bounded by what is left of the budget, because a
     // command that never returns is how the wait this replaces got skipped.
     const remaining = Math.max(1, Math.round(options.timeout - found.spentSeconds));
-    let answered = true;
     for (const { id } of undecided(decided)) {
       const watched = exec(
         withRepo(options.repo, [
@@ -581,14 +580,13 @@ export async function run(deps = {}) {
         ]),
         { timeoutMs: remaining * 1000 },
       );
-      // A watch killed at its ceiling did not fail and said nothing: the answers already read are kept,
-      // and the set stays undecided rather than being re-read into a verdict nobody witnessed.
-      if (watched?.timedOut === true) {
-        answered = false;
-        break;
-      }
+      // A watch that ends without answering bounds the wait; it is not a fact about the set, and it does
+      // not discard what the set already answered. A run that failed during an earlier watch must not be
+      // reported unknown because a later one hit its ceiling — "any red wins" is a rule about the set,
+      // not about the wait — so the set is read again either way, and that read is what decides.
+      if (watched?.timedOut === true) break;
     }
-    if (answered) decided = readSet();
+    decided = readSet();
   }
 
   // The matrix travels with the verdict, because a verdict nobody can audit is the reading this script

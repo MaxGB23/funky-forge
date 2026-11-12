@@ -576,7 +576,11 @@ test('a watch that runs out of time is unknown, never a failure', async (t) => {
   });
 
   assert.equal(code, UNKNOWN, 'a timeout is not a red check');
-  assert.equal(calls.filter((call) => call.startsWith('run view')).length, 1, 'the run answers once, as unfinished');
+  assert.equal(
+    calls.filter((call) => call.startsWith('run view')).length,
+    2,
+    'the run is read before the wait and again after it, and the second read is still unfinished',
+  );
   assert.match(
     String(calls.find((call) => call.startsWith('run watch'))),
     /^run watch 22 --exit-status --interval 15$/,
@@ -954,4 +958,38 @@ test('the deciding run is the one the creation fired, when it appears later', as
   assert.ok(calls.some((call) => /^run view 9 /.test(call)), `the run the creation fired is the one read: ${calls.join(' | ')}`);
   assert.ok(!calls.some((call) => /^run (view|watch) 7 /.test(call)), 'the run behind the floor is never read');
   assert.match(half.out.text, /open-pr: run 9 {2}· {2}passed/);
+});
+
+test('a red found while waiting is not lost when a later watch runs out', async (t) => {
+  // Two runs still going, and the first one fails while the second is being waited for. The second
+  // watch never answers: that is a bound on the wait, not evidence about the set, so the answers already
+  // read are read again and the red decides. "Any red wins" is a rule about the set, not about the wait.
+  const running = { databaseId: 1002, headSha: SHA, status: 'in_progress', conclusion: null };
+  const other = { databaseId: 1003, headSha: SHA, status: 'in_progress', conclusion: null };
+  const base = gh({ snapshot: [], runs: [[running, other]] });
+  let resolved = false;
+  const exec = (args, options) => {
+    if (args[0] === 'run' && args[1] === 'watch') {
+      if (args[2] === '1002') resolved = true;
+      if (args[2] === '1003') return { ok: false, stdout: '', stderr: '', timedOut: true };
+    }
+    if (args[0] === 'run' && args[1] === 'view' && args[2] === '1002' && resolved) {
+      return {
+        ok: true,
+        stdout: JSON.stringify({
+          status: 'completed',
+          conclusion: 'failure',
+          jobs: [{ name: 'test', conclusion: 'failure' }],
+        }),
+        stderr: '',
+      };
+    }
+    return base.exec(args, options);
+  };
+  const { out, err, deps } = frontHalf(t, { exec });
+
+  assert.equal(await run(deps), RED, 'the failure found while waiting decides the set');
+  assert.match(out.text, /open-pr: run 1002 {2}· {2}failed/, 'the failed run is named');
+  assert.match(out.text, /open-pr: run 1003 {2}· {2}unknown/, 'the run nobody could finish is reported, not hidden');
+  assert.equal(err.text, '');
 });
