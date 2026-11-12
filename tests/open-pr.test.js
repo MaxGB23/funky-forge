@@ -14,6 +14,7 @@ import {
   packOptions,
   parseArgs,
   pullRequestFrom,
+  readyEventTime,
   run,
   runsPastFloor,
   suiteOptions,
@@ -39,7 +40,7 @@ function capture() {
  * `runs` is either the one answer every poll gets, or one answer per poll, the last one repeating:
  * `[[], [opened, ready]]` is a run that is not visible yet and then is, which is the shape of the race.
  */
-function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snapshot = [], floor = [], floorOk = true, runs = [], ready = {}, conclusion = 'success', jobs = null, watch = {} } = {}) {
+function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snapshot = [], floor = [], floorOk = true, runs = [], ready = {}, readyAt = '2026-01-01T00:00:00Z\n', conclusion = 'success', jobs = null, watch = {} } = {}) {
   const calls = [];
   const seen = [];
   let lists = 0;
@@ -50,24 +51,36 @@ function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snaps
     return runs[Math.min(index, runs.length - 1)];
   };
 
+  // Every run the API lists carries the time it was created: the run that decides is the one the
+  // readiness event created, so a fixture without a `createdAt` would be a run nobody could attribute.
+  const stamped = (list) =>
+    Array.isArray(list) ? list.map((entry) => ({ createdAt: '2026-01-01T00:10:00Z', ...entry })) : list;
+
   const exec = (args, options) => {
     calls.push(args.join(' '));
     seen.push(options);
     const [group, action] = args;
 
+    if (group === 'api') {
+      // The timeline says when the readiness event happened, which is the only thing that tells the
+      // deciding run from the draft's.
+      return readyAt === null
+        ? { ok: false, stdout: '', stderr: 'gh: the timeline cannot be read' }
+        : { ok: true, stdout: readyAt, stderr: '' };
+    }
     if (group === 'pr' && action === 'create') return { ok: true, stdout: create, stderr: '' };
     if (group === 'pr' && action === 'ready') {
       return { ok: ready.ok ?? true, stdout: ready.stdout ?? '', stderr: ready.stderr ?? '' };
     }
     if (group === 'run' && action === 'list') {
       lists += 1;
-      if (lists === 1) return { ok: true, stdout: JSON.stringify(snapshot), stderr: '' };
+      if (lists === 1) return { ok: true, stdout: JSON.stringify(stamped(snapshot)), stderr: '' };
       if (lists === 2) {
         return floorOk
-          ? { ok: true, stdout: JSON.stringify(floor), stderr: '' }
+          ? { ok: true, stdout: JSON.stringify(stamped(floor)), stderr: '' }
           : { ok: false, stdout: '', stderr: 'gh: not logged in' };
       }
-      return { ok: true, stdout: JSON.stringify(poll(lists - 3)), stderr: '' };
+      return { ok: true, stdout: JSON.stringify(stamped(poll(lists - 3))), stderr: '' };
     }
     if (group === 'run' && action === 'watch') {
       return { ok: watch.ok ?? true, timedOut: watch.timedOut === true, stdout: '', stderr: '' };
@@ -543,7 +556,7 @@ test('a run that finished before the pull request was ready cannot decide it', a
 
   assert.equal(code, UNKNOWN, 'the draft runs are not the deciding run');
   assert.equal(calls.filter((call) => call.startsWith('run watch')).length, 0, 'the stale run is never watched');
-  assert.match(out.text, /no run of a1b2c3d4e5f60718293a4b5c6d7e8f9012345678 appeared within 30s; this is not a failure/);
+  assert.match(out.text, /no run of a1b2c3d4e5f60718293a4b5c6d7e8f9012345678 appeared within 30s that the readiness event could have created; this is not a failure/);
 });
 
 test('a watch that runs out of time is unknown, never a failure', async (t) => {
@@ -827,4 +840,51 @@ test('a suite or a packed set that does not answer is unknown, never red', async
   assert.equal(await run(unpacked.deps), UNKNOWN, 'a packed set killed at its ceiling did not fail');
   assert.match(unpacked.out.text, /did not answer within its ceiling of 120s/);
   assert.equal(calls.length, 0, 'still nothing is created');
+});
+
+test('the time of the readiness event is the last stamp the API printed', () => {
+  // `gh api --paginate` runs its --jq over each page, so the newest event is the last line printed.
+  assert.equal(readyEventTime('2026-01-01T00:00:00Z\n2026-01-01T00:05:00Z\n'), Date.parse('2026-01-01T00:05:00Z'));
+  assert.equal(readyEventTime(''), null, 'a timeline with no readiness event says nothing');
+  assert.equal(readyEventTime(null), null, 'and neither does a call that never answered');
+  assert.equal(readyEventTime('not a time\n'), null);
+});
+
+test('the draft run is never the decision, however long it is alone', async (t) => {
+  // The `opened` run carries this commit, has a smaller id and can be the only one visible for as long
+  // as it likes; the stamp on the event is what says it did not decide.
+  const draft = { databaseId: 7, headSha: SHA, createdAt: '2025-12-31T23:00:00Z' };
+  const { exec, calls } = gh({ runs: [[draft]] });
+  const half = frontHalf(t, { exec });
+
+  const code = await run(half.deps);
+
+  assert.equal(code, UNKNOWN, 'a run the event did not create decides nothing');
+  assert.match(half.out.text, /no run of .* appeared within 30s that the readiness event could have created/);
+  assert.ok(!calls.some((call) => call.startsWith('run watch')), 'and it is never watched');
+});
+
+test('the deciding run is the one the event created, when it appears later', async (t) => {
+  const draft = { databaseId: 7, headSha: SHA, createdAt: '2025-12-31T23:00:00Z' };
+  const decided = { databaseId: 9, headSha: SHA, createdAt: '2026-01-01T00:10:00Z' };
+  const { exec, calls } = gh({ runs: [[draft], [draft], [decided]] });
+  const half = frontHalf(t, { exec });
+
+  const code = await run(half.deps);
+
+  assert.equal(code, GREEN, half.err.text);
+  assert.ok(calls.some((call) => /^run watch 9 /.test(call)), `the deciding run is watched: ${calls.join(' | ')}`);
+  assert.ok(!calls.some((call) => /^run watch 7 /.test(call)), 'the draft run is not');
+});
+
+test('a readiness event whose time cannot be read leaves the run unwatched', async (t) => {
+  const { exec, calls } = gh({ readyAt: null });
+  const half = frontHalf(t, { exec });
+
+  const code = await run(half.deps);
+
+  assert.equal(code, UNKNOWN, 'a run nobody can attribute is not a verdict');
+  assert.match(half.out.text, /the time of that event cannot be read/);
+  assert.ok(calls.some((call) => call.startsWith('pr ready')), 'the pull request was marked ready');
+  assert.ok(!calls.some((call) => call.startsWith('run watch')), 'and deliberately not watched');
 });

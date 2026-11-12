@@ -31,7 +31,7 @@ export const USAGE =
 
 const DEFAULT_TIMEOUT_SECONDS = 600;
 const DEFAULT_INTERVAL_SECONDS = 15;
-const RUN_FIELDS = 'databaseId,headSha,status,conclusion';
+const RUN_FIELDS = 'databaseId,headSha,status,conclusion,createdAt';
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 /**
  * The gate `npm run pack:check` runs, named as a path from the root rather than as a script name, and
@@ -197,14 +197,17 @@ export function failingCount(output) {
 }
 
 /**
- * Polls for the runs of one commit past the floor until the set of them holds still or the attempts run
- * out. The bound is a count of attempts rather than a clock, so a test drives it without waiting.
+ * Polls for the run that the readiness event created, until it can be attributed or the attempts run out.
+ * The bound is a count of attempts rather than a clock, so a test drives it without waiting.
  *
- * A single candidate is not a decision: the `opened` run `gh pr create --draft` fires carries this same
- * commit and can become visible only after the floor was read, so a poll can see it alone and report the
- * draft's verdict before the deciding run exists. A set is decided when a second read agrees with it.
+ * The rule is a property, not a mechanism: a run belongs to the event that created it. Ids only narrow
+ * the field. The `opened` run `gh pr create --draft` fires carries this same commit, has a smaller id
+ * and can become visible at any time, so no ordering of ids and no agreement between two reads can tell
+ * it from the run that decides — the two states "the deciding run does not exist yet" and "this is the
+ * deciding run" look exactly alike. What separates them is the time the API stamped on the event: the
+ * deciding run was created at or after it, and the draft's run was not.
  *
- * @param {{ exec: Function, head: string, repo?: string|null, sha: string, floor?: number, sleep: (ms: number) => Promise<void>, timeoutSeconds?: number, intervalSeconds?: number }} options
+ * @param {{ exec: Function, head: string, repo?: string|null, sha: string, floor?: number, readyAt?: number, sleep: (ms: number) => Promise<void>, timeoutSeconds?: number, intervalSeconds?: number }} options
  * @returns {Promise<{ candidates: Array<object>, sha: string, spentSeconds: number, timedOut: boolean, unstable: string[] }>}
  */
 export async function findRun({
@@ -213,6 +216,7 @@ export async function findRun({
   repo = null,
   sha,
   floor = 0,
+  readyAt,
   sleep,
   timeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
   intervalSeconds = DEFAULT_INTERVAL_SECONDS,
@@ -226,7 +230,8 @@ export async function findRun({
   const poll = () => {
     const remaining = Math.max(1, Math.ceil(timeoutSeconds - spent()));
     const { runs, timedOut } = listRuns(exec, { head, repo, timeoutMs: remaining * 1000 });
-    return { candidates: runs === null ? [] : runsPastFloor(runs, sha, floor), timedOut };
+    const past = runs === null ? [] : runsPastFloor(runs, sha, floor);
+    return { candidates: attributable(past, readyAt), timedOut };
   };
   const done = (fields) =>
     ({ candidates: [], sha, spentSeconds: spent(), timedOut: false, unstable: [], ...fields });
@@ -254,6 +259,42 @@ export async function findRun({
   }
 
   return done({});
+}
+
+/**
+ * The runs of this commit that the readiness event could have created. Without a time for that event
+ * nothing is attributable, so every run stays a candidate and the ambiguity rule answers instead: a
+ * filter that silently widened would be worse than the wait it replaced.
+ *
+ * @param {Array<object>} runs
+ * @param {number|undefined} readyAt
+ * @returns {Array<object>}
+ */
+function attributable(runs, readyAt) {
+  if (typeof readyAt !== 'number') return runs;
+  return runs.filter((run) => {
+    const created = Date.parse(run?.createdAt);
+    return !Number.isNaN(created) && created >= readyAt;
+  });
+}
+
+/**
+ * The time the API stamped on the newest `ready_for_review` event, or `null` when it cannot be read.
+ * Both ends of the comparison come from GitHub, so this is not a local clock trusted against a remote
+ * one: it is the one question the ids cannot answer.
+ *
+ * `gh api --paginate` runs its `--jq` over each page, so the last line printed is the newest event.
+ *
+ * @param {string} stdout
+ * @returns {number|null}
+ */
+export function readyEventTime(stdout) {
+  if (typeof stdout !== 'string') return null;
+  const lines = stdout.split('\n').map((line) => line.trim()).filter((line) => line !== '');
+  const last = lines.at(-1);
+  if (last === undefined) return null;
+  const at = Date.parse(last);
+  return Number.isNaN(at) ? null : at;
 }
 
 /**
@@ -443,8 +484,21 @@ export async function run(deps = {}) {
     return RED;
   }
 
-  // 6. The run of this commit past the floor, polled until it exists. A wait that prints nothing is
-  // indistinguishable from a hang, so the line is written before the first poll and not after the last.
+  // 6. When the event happened, read from the API that stamped it. This is the read that decides which
+  // run is the decision: the draft's run carries the same commit and a smaller id, so only the event's
+  // own time separates them. A time that cannot be read is not guessed — the pull request is already
+  // ready, so the run fires and is left unwatched rather than watched by mistake.
+  const decidedAt = readyEventTimeOf(gh, pullRequest.number, options.repo, options.timeout * 1000);
+  if (decidedAt === null) {
+    out.write(
+      `open-pr: unknown — ${pullRequest.url} was marked ready, but the time of that event cannot be read, so the run it fires cannot be told from the draft's by id alone; the run was not watched; this is not a failure\n`,
+    );
+    return UNKNOWN;
+  }
+
+  // 7. The run of this commit that the event created, polled until it exists. A wait that prints nothing
+  // is indistinguishable from a hang, so the line is written before the first poll and not after the
+  // last.
   out.write(`open-pr: waiting for the run of ${sha} (up to ${options.timeout}s)\n`);
 
   const found = await findRun({
@@ -453,6 +507,7 @@ export async function run(deps = {}) {
     repo: options.repo,
     sha,
     floor,
+    readyAt: decidedAt,
     sleep,
     timeoutSeconds: options.timeout,
     intervalSeconds: DEFAULT_INTERVAL_SECONDS,
@@ -470,7 +525,7 @@ export async function run(deps = {}) {
 
   if (ids.length === 0) {
     out.write(
-      `open-pr: unknown — no run of ${sha} appeared within ${options.timeout}s; this is not a failure\n`,
+      `open-pr: unknown — no run of ${sha} appeared within ${options.timeout}s that the readiness event could have created; this is not a failure\n`,
     );
     return UNKNOWN;
   }
@@ -664,6 +719,26 @@ function alreadyReady(answer) {
  */
 function withRepo(repo, args) {
   return repo === null ? args : [...args, '--repo', repo];
+}
+
+/**
+ * @param {(args: string[], options?: object) => { ok: boolean, stdout?: string, timedOut?: boolean }} exec
+ * @param {number} number
+ * @param {string|null} [repo]
+ * @param {number} [timeoutMs]
+ * @returns {number|null} when the readiness event was stamped, or `null` when the API cannot say
+ */
+function readyEventTimeOf(exec, number, repo = null, timeoutMs) {
+  const path =
+    repo === null
+      ? `repos/{owner}/{repo}/issues/${number}/timeline`
+      : `repos/${repo}/issues/${number}/timeline`;
+  const answer = exec(
+    ['api', path, '--paginate', '--jq', '[.[] | select(.event == "ready_for_review")] | .[-1].created_at // empty'],
+    { timeoutMs },
+  );
+  if (answer?.ok !== true) return null;
+  return readyEventTime(answer.stdout);
 }
 
 /**

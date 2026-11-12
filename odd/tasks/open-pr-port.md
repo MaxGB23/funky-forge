@@ -167,3 +167,27 @@ and label `type:ci`; this file records the decisions that refine it, the task or
   A cheaper alternative, if the API call is not wanted: refuse (`2`) whenever the newest run of this
   commit was created before the ready call could have taken effect, and say the deciding run could not be
   attributed — a tool that says "I cannot tell" instead of "passed".
+- **L14.** Third review (`review-5c63c4b2448a0e3b`) ended `escalated`: the targeted validator rejected the
+  correction with two findings. Both were checked against the code, not taken on trust, and they did not
+  have the same status:
+  - **`R3-004`/`R4-002` — refuted.** The finding said the remaining budget never reaches a poll because
+    `listRuns` calls the `gh` wrapper, which ignores per-call options. `listRuns` takes the `exec` it is
+    given and forwards `timeoutMs` to it (`scripts/open-pr.js:676-679`), and `findRun` passes the raw
+    `exec`, not the closure, with `remaining * 1000` (`scripts/open-pr.js:227-228`). The closure the
+    finding pointed at is `gh` (`scripts/open-pr.js:309`), used for a single floor read that has no wait
+    budget to spend. Recorded as refuted with those lines, not as fixed.
+  - **`R3-001`/`R4-001` — accepted**, and it is the one that mattered.
+  **The fixed rule, now written as a property instead of a mechanism:** *a run belongs to the event that
+  created it.* Ids only narrow the field; they cannot decide, because the draft's run carries the same
+  commit, has the smaller id, and can surface at any time — so "the deciding run does not exist yet" and
+  "this is the deciding run" are the same observation. What separates them is the stamp the API put on
+  the event: `open-pr.js` reads the newest `ready_for_review` `created_at`
+  (`gh api repos/{owner}/{repo}/issues/N/timeline --paginate --jq`), and a run is a candidate only when
+  its `createdAt` is at or after it. **Both ends come from GitHub**, which is why this is not the clock
+  L10 forbids: that rule is about trusting this machine's clock against a remote one.
+  A time that cannot be read is not guessed: the pull request is already ready, the run fires, and the
+  command answers `2` saying it was not watched. The two-read agreement stays as a second net.
+  **Evidence**: 4 new cases (`readyEventTime` parsing, the draft's run alone and forever, the deciding run
+  appearing later, an unreadable event time); `tests/open-pr.test.js` 31 → **35**, suite 266 → **270**.
+  Mutation: returning the runs unfiltered kills exactly those two cases that pin the property and
+  nothing else, which is what a property looks like when it is load-bearing.
