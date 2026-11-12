@@ -888,3 +888,17 @@ test('a readiness event whose time cannot be read leaves the run unwatched', asy
   assert.ok(calls.some((call) => call.startsWith('pr ready')), 'the pull request was marked ready');
   assert.ok(!calls.some((call) => call.startsWith('run watch')), 'and deliberately not watched');
 });
+
+test('the draft and its readiness are more than a second apart, so the stamps can separate them', async (t) => {
+  // GitHub stamps events to the second. Two events in the same second carry the same stamp, and then no
+  // comparison can say which run the readiness fired — the wait is what makes the stamp mean something.
+  const waits = [];
+  const { exec, calls } = gh({ runs: [{ databaseId: 9, headSha: SHA }] });
+  const half = frontHalf(t, { exec, sleep: async (ms) => { waits.push(ms); } });
+
+  const code = await run(half.deps);
+
+  assert.equal(code, GREEN, half.err.text);
+  assert.ok(waits.includes(1_500), `the quiet second is waited for before the draft is marked ready: ${waits.join(',')}`);
+  assert.ok(calls.some((call) => call.startsWith('pr ready')), 'the readiness is still fired');
+});

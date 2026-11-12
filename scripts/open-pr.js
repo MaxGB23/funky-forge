@@ -32,6 +32,14 @@ export const USAGE =
 const DEFAULT_TIMEOUT_SECONDS = 600;
 const DEFAULT_INTERVAL_SECONDS = 15;
 const RUN_FIELDS = 'databaseId,headSha,status,conclusion,createdAt';
+
+/**
+ * How long the draft is left alone before it is marked ready. GitHub stamps events to the second, so a
+ * readiness fired in the same second as the draft's own run carries the same stamp as it and no
+ * comparison can tell the two runs apart. This wait is not how a run is identified — both ends of that
+ * comparison come from the API — it is what makes the two stamps differ at all.
+ */
+const READY_QUIET_MS = 1_500;
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 /**
  * The gate `npm run pack:check` runs, named as a path from the root rather than as a script name, and
@@ -467,6 +475,11 @@ export async function run(deps = {}) {
     return UNKNOWN;
   }
   const floor = floorOf(before.runs, sha);
+
+  // The draft's run is behind the floor normally, but it can surface after the floor was read and carry
+  // any id, so the id cannot rule it out. What rules it out is that its stamp is older than the
+  // readiness event's — and that only holds while the two events are more than a second apart.
+  await sleep(READY_QUIET_MS);
 
   // 5. This fires the event that decides.
   const ready = gh(withRepo(options.repo, ['pr', 'ready', String(pullRequest.number)]));
