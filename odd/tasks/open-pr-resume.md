@@ -154,3 +154,19 @@ identically in both and lands last.
   `runPolicy` from `open-pr.js` **before** the pull request exists, so there is no number to read live at
   that step — the live read belongs to the run that already knows its pull request, and the local
   pre-creation check keeps using the label it is about to apply.
+- **L10.** Native review, RDD on (`gentle-ai review mode status`: global on). Candidate: the committed range
+  `main..fix/open-pr-resume`, 4 paths, 734 changed lines, tier `high` (reason `process_boundary`), lenses
+  `risk`, `resilience`, `reliability` — lineage `review-0a8fb4676e2267e2`. Three reviewers ran, the refuter
+  admitted two CRITICAL findings, both mine and both real (R3-001 reliability, R4-001 resilience): the
+  watch loop skipped the re-read when any watch hit its ceiling, so a run that turned red during an
+  earlier watch was reported `unknown` instead of `red` — the set rule was being broken by the wait.
+- **L11.** Correction landed as `3a139bc`, test first: the new case (`a red found while waiting is not lost
+  when a later watch runs out`) failed on the unfixed code and passes now; the set is read again after
+  the wait whether or not every watch answered, and that read decides. The correction was 54 diff lines
+  against a frozen budget of 200. Suite 272/272, `pack:check` green. The targeted validator approved it;
+  the exact acknowledgement burned the authority (`gentle-ai.review-acknowledged/v1`). One advisory
+  finding (R4-002, WARNING, informational, `scripts/open-pr.js:570-582`) stands as later work and does not
+  reopen this candidate.
+- **L12.** Delivery is untouched: no push, no issue, no pull request. Under this repository's policy the
+  issue carries `status:approved` before a branch goes up, and the pull request is opened with
+  `node scripts/open-pr.js`.
