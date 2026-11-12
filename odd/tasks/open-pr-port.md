@@ -15,11 +15,13 @@ and label `type:ci`; this file records the decisions that refine it, the task or
   `--help` prints the same usage and exits `0` without touching `gh`."
 - **S3 — The decisions the port must keep.** Issue: "The suite runs first and a red one refuses, naming
   the failing count, before anything is created"; "`check-pr-policy` runs through the function CI runs —
-  `run` imported from `scripts/check-pr-policy.js`"; "The label travels in the creation: `gh pr create
-  --draft --label`"; "The run is selected by `headSha`, never by being the newest of the branch";
-  "`decideGate` is imported from `scripts/wait-for-ci.js`, never re-implemented"; "Every child is
-  bounded. `gh` by the wait budget, the suite and `npm pack` by their own ceilings, local `git` by a
-  local one"; "The verdict is the matrix"; "A timeout is exit `2`"; "The matrix is printed".
+  `run` imported from `scripts/check-pr-policy.js`"; "The label travels in the creation" — as
+  `gh pr create --label`, with the pull request created ready and no `--draft`, so the creation is the
+  only event and the one run it fires is the decision (L16); "The run is selected by `headSha`, never by
+  being the newest of the branch"; "`decideGate` is imported from `scripts/wait-for-ci.js`, never
+  re-implemented"; "Every child is bounded. `gh` by the wait budget, the suite and `npm pack` by their
+  own ceilings, local `git` by a local one"; "The verdict is the matrix"; "A timeout is exit `2`"; "The
+  matrix is printed".
 - **S4 — Porting hazards.** Issue: "The default repository name. Secure's copy defaults to its own
   repository. A literal copy that still names `funky-secure` opens the pull request in the wrong
   repository"; "`scripts/` must stay out of the published tarball"; "The suite command, in one place,
@@ -213,3 +215,12 @@ and label `type:ci`; this file records the decisions that refine it, the task or
   - *Refuse the ambiguity explicitly.* Answer `2` whenever the run cannot be *shown* to belong to the
     event, which given the above means always unless the API grows the missing field. Cost: the verdict
     becomes rare, and a ritual that usually says "unknown" is not used.
+- **L16.** The human decided the fork L15 left open: **"Un solo evento: abrir el PR ya listo"**. The
+  creation is the only event, so `open-pr.js` drops `--draft` and the whole readiness step with it
+  (`gh pr ready`, `alreadyReady`, the quiet second, the timeline read), and it takes the floor once,
+  before `pr create`, refusing with exit `2` when that read cannot answer. It removes the missing fact
+  from the ritual instead of working around it: there is no second event whose run could be confused
+  with the first, so nothing has to be attributed afterwards.
+  It costs the labelled-draft phase `AGENTS.md` used to document, and a ready pull request exists from
+  the moment it is created: a ritual interrupted halfway now leaves a reviewable pull request rather
+  than a harmless draft.

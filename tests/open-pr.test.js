@@ -14,7 +14,6 @@ import {
   packOptions,
   parseArgs,
   pullRequestFrom,
-  readyEventTime,
   run,
   runsPastFloor,
   suiteOptions,
@@ -34,13 +33,13 @@ function capture() {
 
 /**
  * A `gh` whose answers are written here and nowhere else. Call order decides which `run list` answer is
- * served: the first is the fail-closed read taken before anything is created, the second is the floor
- * read taken immediately before `gh pr ready`, and every later one is a poll after the deciding event.
+ * served: the first is the floor read taken before anything is created, and every later one is a poll
+ * of the run the creation fired.
  *
  * `runs` is either the one answer every poll gets, or one answer per poll, the last one repeating:
- * `[[], [opened, ready]]` is a run that is not visible yet and then is, which is the shape of the race.
+ * `[[], [decided]]` is a run that is not visible yet and then is.
  */
-function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snapshot = [], floor = [], floorOk = true, runs = [], ready = {}, readyAt = '2026-01-01T00:00:00Z\n', conclusion = 'success', jobs = null, watch = {} } = {}) {
+function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snapshot = [], runs = [], floorRead = null, conclusion = 'success', jobs = null, watch = {} } = {}) {
   const calls = [];
   const seen = [];
   let lists = 0;
@@ -51,36 +50,22 @@ function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snaps
     return runs[Math.min(index, runs.length - 1)];
   };
 
-  // Every run the API lists carries the time it was created: the run that decides is the one the
-  // readiness event created, so a fixture without a `createdAt` would be a run nobody could attribute.
-  const stamped = (list) =>
-    Array.isArray(list) ? list.map((entry) => ({ createdAt: '2026-01-01T00:10:00Z', ...entry })) : list;
-
   const exec = (args, options) => {
     calls.push(args.join(' '));
     seen.push(options);
     const [group, action] = args;
 
-    if (group === 'api') {
-      // The timeline says when the readiness event happened, which is the only thing that tells the
-      // deciding run from the draft's.
-      return readyAt === null
-        ? { ok: false, stdout: '', stderr: 'gh: the timeline cannot be read' }
-        : { ok: true, stdout: readyAt, stderr: '' };
-    }
     if (group === 'pr' && action === 'create') return { ok: true, stdout: create, stderr: '' };
-    if (group === 'pr' && action === 'ready') {
-      return { ok: ready.ok ?? true, stdout: ready.stdout ?? '', stderr: ready.stderr ?? '' };
-    }
     if (group === 'run' && action === 'list') {
       lists += 1;
-      if (lists === 1) return { ok: true, stdout: JSON.stringify(stamped(snapshot)), stderr: '' };
-      if (lists === 2) {
-        return floorOk
-          ? { ok: true, stdout: JSON.stringify(stamped(floor)), stderr: '' }
+      // The first read is the floor, taken before a pull request exists; a non-null `floorRead` is that
+      // read failing, which is a refusal and not a pull request to repair afterwards.
+      if (lists === 1) {
+        return floorRead === null
+          ? { ok: true, stdout: JSON.stringify(snapshot), stderr: '' }
           : { ok: false, stdout: '', stderr: 'gh: not logged in' };
       }
-      return { ok: true, stdout: JSON.stringify(stamped(poll(lists - 3))), stderr: '' };
+      return { ok: true, stdout: JSON.stringify(poll(lists - 2)), stderr: '' };
     }
     if (group === 'run' && action === 'watch') {
       return { ok: watch.ok ?? true, timedOut: watch.timedOut === true, stdout: '', stderr: '' };
@@ -324,7 +309,7 @@ test('a policy refusal refuses before anything is created and prints the policy 
   assert.equal(calls.length, 0, 'a refused pull request is never created');
 });
 
-test('creates a labelled draft, marks it ready and returns the run of this commit', async (t) => {
+test('creates the pull request ready and returns the run of this commit', async (t) => {
   const out = capture();
   const err = capture();
   const { exec, calls } = gh({
@@ -352,13 +337,13 @@ test('creates a labelled draft, marks it ready and returns the run of this commi
   const created = calls.find((call) => call.startsWith('pr create'));
   assert.ok(created, 'the pull request is created');
   assert.match(created, /--label type:docs/, 'the label travels in the creation, not after it');
-  assert.match(created, /--draft/, 'a draft matches the workflow guard');
+  assert.doesNotMatch(created, /--draft/, 'created ready: one event, so one run to watch');
   assert.match(created, /--base main/);
   assert.match(created, /--head feat\/open-pr/);
   assert.match(created, /--body-file /);
   assert.doesNotMatch(created, /--repo/, 'no repository is named, so gh cannot be pointed at another one');
 
-  assert.ok(calls.includes('pr ready 42'), `ready runs against the created pull request: ${calls.join(' | ')}`);
+  assert.ok(!calls.some((call) => call.startsWith('pr ready')), 'no readiness step, so no second event to attribute');
 
   const watched = calls.find((call) => call.startsWith('run watch'));
   assert.match(watched, /^run watch 22 /, 'the run of this commit, never the newest run of the branch');
@@ -372,15 +357,15 @@ test('creates a labelled draft, marks it ready and returns the run of this commi
   assert.match(out.text, /pull\/42 {2}· {2}passed/, 'the verdict is printed');
 });
 
-test('a run of the draft that appears after ready can never decide, because its id is older', async (t) => {
+test('two runs of this commit that surface together cannot decide, and neither is picked', async (t) => {
   const out = capture();
   const err = capture();
-  // The `opened` event `gh pr create --draft` fires carries this same commit and is green, and it is not
-  // visible when the floor is taken. It appears during the wait, behind the `ready_for_review` run that
-  // has the greater id: nothing in the answer says which of the two the ready fired, so neither decides.
-  const draft = { databaseId: 1001, headSha: SHA, status: 'completed', conclusion: 'success' };
-  const deciding = { databaseId: 1002, headSha: SHA, status: 'in_progress', conclusion: null };
-  const { exec, calls } = gh({ snapshot: [], runs: [[], [deciding, draft]] });
+  // A run of this commit existed before the floor was taken but was not visible to it, and the run the
+  // creation fired appears in the same poll. Both are past the floor and the green one is the older: the
+  // answer says nothing about which of them the creation fired, so neither decides.
+  const earlier = { databaseId: 1001, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const later = { databaseId: 1002, headSha: SHA, status: 'in_progress', conclusion: null };
+  const { exec, calls } = gh({ snapshot: [], runs: [[], [later, earlier]] });
 
   const code = await run({
     argv: argvFor(bodyFile(t, BODY)),
@@ -393,8 +378,8 @@ test('a run of the draft that appears after ready can never decide, because its 
     err,
   });
 
-  assert.equal(code, UNKNOWN, 'a green run of the draft is not the verdict of the ready event');
-  assert.doesNotMatch(out.text, /·  passed/, 'never green, however green the draft run was');
+  assert.equal(code, UNKNOWN, 'a run that was already there is not the verdict of the creation');
+  assert.doesNotMatch(out.text, /·  passed/, 'never green, however green that run was');
   assert.match(out.text, /unknown/, 'the answer says it cannot tell, which is not a failure');
   assert.equal(calls.filter((call) => call.startsWith('run watch')).length, 0, 'no run is watched');
 });
@@ -474,16 +459,13 @@ test('two runs past the floor are ambiguous, not a choice', async (t) => {
   assert.equal(calls.filter((call) => call.startsWith('run watch')).length, 0, 'neither is picked and watched');
 });
 
-test('a ready that changed nothing is unknown, never a verdict', async (t) => {
+test('a floor that cannot be read refuses before anything is created, so nothing was created', async (t) => {
   const out = capture();
   const err = capture();
-  // `gh pr ready` on an already-ready pull request fires no event, so no run belongs to it and a verdict
-  // read from whatever the branch has would be a verdict on an event nobody caused.
-  const { exec, calls } = gh({
-    snapshot: [],
-    runs: [{ databaseId: 1002, headSha: SHA, status: 'completed', conclusion: 'success' }],
-    ready: { ok: true, stdout: '', stderr: '✓ Pull request #42 is already ready for review\n' },
-  });
+  // Nothing exists yet when the floor is read, so a read that cannot answer is a refusal and not a pull
+  // request to repair: an unreadable floor means the run of the single event this command fires cannot
+  // be told from what is already there, and the command stops before `pr create`.
+  const { exec, calls } = gh({ floorRead: 'gh: not logged in' });
 
   const code = await run({
     argv: argvFor(bodyFile(t, BODY)),
@@ -496,52 +478,44 @@ test('a ready that changed nothing is unknown, never a verdict', async (t) => {
     err,
   });
 
-  assert.equal(code, UNKNOWN, 'no event fired is not a red check');
-  assert.match(out.text, /already ready/);
-  assert.equal(calls.filter((call) => call.startsWith('run watch')).length, 0, 'nothing is watched');
-  assert.equal(calls.filter((call) => call.startsWith('run view')).length, 0, 'and nothing is judged');
-  assert.equal(
-    calls.filter((call) => call.startsWith('run list')).length,
-    2,
-    'the fail-closed read and the floor read, and no poll after a ready that fired nothing',
+  assert.equal(code, 2, 'a blind floor is exit 2, never a failure');
+  assert.match(
+    err.text,
+    /^open-pr: refusing: the runs of this branch cannot be read, so no floor can be taken, and nothing was created$/m,
+    'the refusal says what could not be read and what it means',
   );
-});
-
-test('a floor that cannot be read once the draft exists refuses, and never marks it ready', async (t) => {
-  const out = capture();
-  const err = capture();
-  // The fail-closed read succeeded, so a draft exists; the read that would bound the deciding event
-  // failed. A draft never marked ready fires that event never, which is harmless: guessing is not.
-  const { exec, calls } = gh({
-    snapshot: [],
-    floorOk: false,
-    runs: [{ databaseId: 22, headSha: SHA, conclusion: 'success' }],
-  });
-
-  const code = await run({
-    argv: argvFor(bodyFile(t, BODY)),
-    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
-    pack: packGuard(PACK_GREEN),
-    exec,
-    resolveSha: () => SHA,
-    sleep: async () => {},
-    out,
-    err,
-  });
-
-  assert.equal(code, UNKNOWN, 'a blind floor is unknown, never a failure');
-  assert.ok(calls.some((call) => call.startsWith('pr create')), 'the draft exists by then');
-  assert.ok(!calls.some((call) => call.startsWith('pr ready')), 'and it is deliberately not marked ready');
+  assert.match(err.text, /nothing was created/, 'and that the repository is untouched');
+  assert.ok(!calls.some((call) => call.startsWith('pr create')), 'nothing is created on a blind floor');
+  assert.equal(calls.filter((call) => call.startsWith('run list')).length, 1, 'the read that failed, and no poll');
   assert.equal(calls.filter((call) => call.startsWith('run watch')).length, 0, 'and nothing is watched');
-  assert.match(out.text, /was created and deliberately not marked ready/, 'the message says what happened');
-  assert.doesNotMatch(err.text, /nothing was created/, 'this is not the pre-creation refusal');
+  assert.match(out.text, /suite green/, 'the steps before it ran and said so');
+  assert.doesNotMatch(out.text, /https:\/\/github\.com/, 'no pull request URL is printed, because none exists');
 });
 
-test('a run that finished before the pull request was ready cannot decide it', async (t) => {
+test('the floor is read before the pull request is created', async (t) => {
+  const { exec, calls } = gh({
+    snapshot: [{ databaseId: 9, headSha: SHA, status: 'completed', conclusion: 'success' }],
+    runs: [{ databaseId: 22, headSha: SHA, status: 'completed', conclusion: 'success' }],
+  });
+  const { out, err, deps } = frontHalf(t, { exec });
+
+  assert.equal(await run(deps), GREEN, err.text);
+
+  const listed = calls.findIndex((call) => call.startsWith('run list'));
+  const created = calls.findIndex((call) => call.startsWith('pr create'));
+  assert.equal(listed, 0, 'the floor is the first thing asked of gh');
+  assert.ok(created > listed, `the creation comes after the floor: ${calls.join(' | ')}`);
+  assert.match(out.text, /open-pr: run 22 {2}·/);
+});
+
+test('a run of this commit that existed before the creation stays behind the floor', async (t) => {
   const out = capture();
   const err = capture();
-  const stale = { databaseId: 9, headSha: SHA, conclusion: 'success' };
-  const { exec, calls } = gh({ floor: [stale], runs: [stale] });
+  // The branch was pushed before this ritual ran, so the commit already has a run and it is visible to
+  // the floor read. It is the floor: the one event this command fires cannot have fired it, and however
+  // long it stays the only run of this commit it is never the decision.
+  const earlier = { databaseId: 9, headSha: SHA, conclusion: 'success' };
+  const { exec, calls } = gh({ snapshot: [earlier], runs: [earlier] });
 
   const code = await run({
     argv: argvFor(bodyFile(t, BODY)),
@@ -554,9 +528,9 @@ test('a run that finished before the pull request was ready cannot decide it', a
     err,
   });
 
-  assert.equal(code, UNKNOWN, 'the draft runs are not the deciding run');
-  assert.equal(calls.filter((call) => call.startsWith('run watch')).length, 0, 'the stale run is never watched');
-  assert.match(out.text, /no run of a1b2c3d4e5f60718293a4b5c6d7e8f9012345678 appeared within 30s that the readiness event could have created; this is not a failure/);
+  assert.equal(code, UNKNOWN, 'a run that was already there is not the one the creation fired');
+  assert.equal(calls.filter((call) => call.startsWith('run watch')).length, 0, 'the earlier run is never watched');
+  assert.match(out.text, /no run of a1b2c3d4e5f60718293a4b5c6d7e8f9012345678 appeared within 30s that the creation could have fired; this is not a failure/);
 });
 
 test('a watch that runs out of time is unknown, never a failure', async (t) => {
@@ -712,34 +686,6 @@ test('every gh call is bounded, not only the watch', async (t) => {
   }
 });
 
-test('a run snapshot that cannot be read refuses before anything is created', async (t) => {
-  const out = capture();
-  const err = capture();
-  const calls = [];
-  const exec = (args) => {
-    calls.push(args.join(' '));
-    if (args[0] === 'run' && args[1] === 'list') return { ok: false, stdout: '', stderr: 'gh: not logged in' };
-    return { ok: true, stdout: '', stderr: '' };
-  };
-
-  const code = await run({
-    argv: argvFor(bodyFile(t, BODY)),
-    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
-    pack: packGuard(PACK_GREEN),
-    exec,
-    resolveSha: () => SHA,
-    sleep: async () => {},
-    out,
-    err,
-  });
-
-  // A list nobody could read cannot set the floor, so proceeding would let the `opened` run of this
-  // same commit — which the creation itself fires — stand in for the run of the ready event.
-  assert.equal(code, UNKNOWN, 'a blind floor is unknown, never a failure');
-  assert.match(err.text, /the runs of this branch cannot be read/);
-  assert.ok(!calls.some((call) => call.startsWith('pr create')), 'nothing is created on a blind snapshot');
-});
-
 test('a commit that cannot be resolved refuses and creates nothing', async (t) => {
   const out = capture();
   const err = capture();
@@ -778,15 +724,15 @@ function frontHalf(t, overrides) {
   return { out, err, deps };
 }
 
-test('a poll that sees the draft run alone is not a decision, because the set grew', async (t) => {
-  // The floor was read before the `opened` run was visible, so the first poll sees it alone and green;
-  // the run the ready event fired appears while the second read is taken.
-  const draft = { databaseId: 1001, headSha: SHA, status: 'completed', conclusion: 'success' };
-  const deciding = { databaseId: 1002, headSha: SHA, status: 'in_progress', conclusion: null };
-  const { exec, calls } = gh({ snapshot: [], runs: [[draft], [draft, deciding]] });
+test('a poll that sees one run alone is not a decision, because the set grew', async (t) => {
+  // A run of this commit existed before the floor was taken but was not visible to it, so the first poll
+  // sees it alone and green; the run the creation fired appears while the second read is taken.
+  const earlier = { databaseId: 1001, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const later = { databaseId: 1002, headSha: SHA, status: 'in_progress', conclusion: null };
+  const { exec, calls } = gh({ snapshot: [], runs: [[earlier], [earlier, later]] });
   const { out, deps } = frontHalf(t, { exec });
-  assert.equal(await run(deps), UNKNOWN, 'the draft run alone is not what the ready event fired');
-  assert.doesNotMatch(out.text, /passed/, 'never green, however green the draft run was');
+  assert.equal(await run(deps), UNKNOWN, 'the run that was already there is not what the creation fired');
+  assert.doesNotMatch(out.text, /passed/, 'never green, however green that run was');
   assert.match(out.text, /1001, 1002/, 'both ids are named, so the answer can be audited');
   assert.ok(!calls.some((call) => call.startsWith('run watch')), 'no run is watched on a set that did not hold still');
 });
@@ -796,7 +742,7 @@ test('one run that is still the only one on the second read decides on the matri
   const { exec, calls } = gh({ snapshot: [], runs: [deciding] });
   const { out, err, deps } = frontHalf(t, { exec });
   assert.equal(await run(deps), GREEN, err.text);
-  assert.equal(calls.filter((call) => call.startsWith('run list')).length, 4, 'the snapshot, the floor, two polls');
+  assert.equal(calls.filter((call) => call.startsWith('run list')).length, 3, 'the floor read and the two polls');
   assert.match(out.text, /·  passed/, 'the verdict comes from the matrix of that run');
 });
 
@@ -813,20 +759,19 @@ test('a poll that does not answer ends the wait as unknown, and is not retried',
   assert.equal(lists, 3, 'not retried: a retry spends the budget of a poll that did answer');
 });
 
-test('a create or a ready that does not answer is unknown, never red', async (t) => {
+test('a create that does not answer is unknown, never red', async (t) => {
+  // `gh pr create` is the event the run belongs to, so a creation killed at its ceiling may or may not
+  // have happened: the only honest answer names both ways out and never claims a failure.
   const { exec: answered } = gh();
   const hangCreate = (args, options) =>
     args[0] === 'pr' && args[1] === 'create' ? { ok: false, stdout: '', stderr: '', timedOut: true } : answered(args, options);
   const created = frontHalf(t, { exec: hangCreate });
   assert.equal(await run(created.deps), UNKNOWN, 'a create killed at its ceiling did not fail');
-  assert.match(created.out.text, /create did not answer within its ceiling of 30s, so whether a draft was created cannot be told/);
-
-  const { exec: readyAnswered } = gh({ snapshot: [] });
-  const hangReady = (args, options) =>
-    args[0] === 'pr' && args[1] === 'ready' ? { ok: false, stdout: '', stderr: '', timedOut: true } : readyAnswered(args, options);
-  const readied = frontHalf(t, { exec: hangReady });
-  assert.equal(await run(readied.deps), UNKNOWN, 'a ready killed at its ceiling did not fail');
-  assert.match(readied.out.text, /ready 42 did not answer within its ceiling of 30s, so the draft .* was created and may or may not be ready/);
+  assert.match(
+    created.out.text,
+    /create did not answer within its ceiling of 30s, so whether a pull request was created cannot be told/,
+  );
+  assert.match(created.out.text, /check gh pr list --head feat\/open-pr/, 'and the command that settles it');
 });
 
 test('a suite or a packed set that does not answer is unknown, never red', async (t) => {
@@ -842,63 +787,18 @@ test('a suite or a packed set that does not answer is unknown, never red', async
   assert.equal(calls.length, 0, 'still nothing is created');
 });
 
-test('the time of the readiness event is the last stamp the API printed', () => {
-  // `gh api --paginate` runs its --jq over each page, so the newest event is the last line printed.
-  assert.equal(readyEventTime('2026-01-01T00:00:00Z\n2026-01-01T00:05:00Z\n'), Date.parse('2026-01-01T00:05:00Z'));
-  assert.equal(readyEventTime(''), null, 'a timeline with no readiness event says nothing');
-  assert.equal(readyEventTime(null), null, 'and neither does a call that never answered');
-  assert.equal(readyEventTime('not a time\n'), null);
-});
-
-test('the draft run is never the decision, however long it is alone', async (t) => {
-  // The `opened` run carries this commit, has a smaller id and can be the only one visible for as long
-  // as it likes; the stamp on the event is what says it did not decide.
-  const draft = { databaseId: 7, headSha: SHA, createdAt: '2025-12-31T23:00:00Z' };
-  const { exec, calls } = gh({ runs: [[draft]] });
-  const half = frontHalf(t, { exec });
-
-  const code = await run(half.deps);
-
-  assert.equal(code, UNKNOWN, 'a run the event did not create decides nothing');
-  assert.match(half.out.text, /no run of .* appeared within 30s that the readiness event could have created/);
-  assert.ok(!calls.some((call) => call.startsWith('run watch')), 'and it is never watched');
-});
-
-test('the deciding run is the one the event created, when it appears later', async (t) => {
-  const draft = { databaseId: 7, headSha: SHA, createdAt: '2025-12-31T23:00:00Z' };
-  const decided = { databaseId: 9, headSha: SHA, createdAt: '2026-01-01T00:10:00Z' };
-  const { exec, calls } = gh({ runs: [[draft], [draft], [decided]] });
+test('the deciding run is the one the creation fired, when it appears later', async (t) => {
+  // The commit already has a run of an earlier push, and the floor hides it. The run this creation
+  // fired is not visible on the first poll: it surfaces one interval later, alone past the floor, and
+  // that one is watched because the only event this command fires is the creation.
+  const earlier = { databaseId: 7, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const decided = { databaseId: 9, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const { exec, calls } = gh({ snapshot: [earlier], runs: [[earlier], [earlier, decided]] });
   const half = frontHalf(t, { exec });
 
   const code = await run(half.deps);
 
   assert.equal(code, GREEN, half.err.text);
-  assert.ok(calls.some((call) => /^run watch 9 /.test(call)), `the deciding run is watched: ${calls.join(' | ')}`);
-  assert.ok(!calls.some((call) => /^run watch 7 /.test(call)), 'the draft run is not');
-});
-
-test('a readiness event whose time cannot be read leaves the run unwatched', async (t) => {
-  const { exec, calls } = gh({ readyAt: null });
-  const half = frontHalf(t, { exec });
-
-  const code = await run(half.deps);
-
-  assert.equal(code, UNKNOWN, 'a run nobody can attribute is not a verdict');
-  assert.match(half.out.text, /the time of that event cannot be read/);
-  assert.ok(calls.some((call) => call.startsWith('pr ready')), 'the pull request was marked ready');
-  assert.ok(!calls.some((call) => call.startsWith('run watch')), 'and deliberately not watched');
-});
-
-test('the draft and its readiness are more than a second apart, so the stamps can separate them', async (t) => {
-  // GitHub stamps events to the second. Two events in the same second carry the same stamp, and then no
-  // comparison can say which run the readiness fired — the wait is what makes the stamp mean something.
-  const waits = [];
-  const { exec, calls } = gh({ runs: [{ databaseId: 9, headSha: SHA }] });
-  const half = frontHalf(t, { exec, sleep: async (ms) => { waits.push(ms); } });
-
-  const code = await run(half.deps);
-
-  assert.equal(code, GREEN, half.err.text);
-  assert.ok(waits.includes(1_500), `the quiet second is waited for before the draft is marked ready: ${waits.join(',')}`);
-  assert.ok(calls.some((call) => call.startsWith('pr ready')), 'the readiness is still fired');
+  assert.ok(calls.some((call) => /^run watch 9 /.test(call)), `the run the creation fired is watched: ${calls.join(' | ')}`);
+  assert.ok(!calls.some((call) => /^run watch 7 /.test(call)), 'the run behind the floor is not');
 });
