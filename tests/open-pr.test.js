@@ -37,10 +37,12 @@ function capture() {
  */
 function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snapshot = [], runs = [], conclusion = 'success', jobs = null, watch = {} } = {}) {
   const calls = [];
+  const seen = [];
   let lists = 0;
 
-  const exec = (args) => {
+  const exec = (args, options) => {
     calls.push(args.join(' '));
+    seen.push(options);
     const [group, action] = args;
 
     if (group === 'pr' && action === 'create') return { ok: true, stdout: create, stderr: '' };
@@ -69,7 +71,7 @@ function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snaps
     return { ok: false, stdout: '', stderr: `unexpected gh ${args.join(' ')}` };
   };
 
-  return { exec, calls };
+  return { exec, calls, seen };
 }
 
 /**
@@ -472,8 +474,7 @@ test('the packed-set gate is bounded by a ceiling of its own', () => {
   assert.equal(options.cwd, suiteOptions().cwd, 'in the repository root, where the guard resolves `files`');
 });
 
-test('--help says how to use it and touches nothing', async () => {
-  const out = capture();
+test('--help says how to use it and touches nothing', async () => {  const out = capture();
   const err = capture();
   const { exec, calls } = gh();
 
@@ -484,4 +485,77 @@ test('--help says how to use it and touches nothing', async () => {
   assert.match(out.text, /--label/, 'including the one that travels in the creation');
   assert.equal(calls.length, 0, 'a question must not create anything');
   assert.equal(err.text, '');
+});
+
+test('every gh call is bounded, not only the watch', async (t) => {
+  const out = capture();
+  const err = capture();
+  const { exec, seen } = gh({ snapshot: [], runs: [{ databaseId: 22, headSha: SHA, conclusion: 'success' }] });
+
+  const code = await run({
+    argv: argvFor(bodyFile(t, BODY)),
+    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
+    pack: packGuard(PACK_GREEN),
+    exec,
+    resolveSha: () => SHA,
+    sleep: async () => {},
+    out,
+    err,
+  });
+
+  assert.equal(code, GREEN, err.text);
+  assert.ok(seen.length >= 4, `create, list, ready, watch and view all go through one child: ${seen.length}`);
+  for (const options of seen) {
+    // `argvFor` asks for `--timeout 30`, so the ceiling of every child is 30 s, not only the watch's.
+    assert.equal(options?.timeoutMs, 30_000, 'the wait budget is the ceiling of every child');
+  }
+});
+
+test('a run snapshot that cannot be read refuses before anything is created', async (t) => {
+  const out = capture();
+  const err = capture();
+  const calls = [];
+  const exec = (args) => {
+    calls.push(args.join(' '));
+    if (args[0] === 'run' && args[1] === 'list') return { ok: false, stdout: '', stderr: 'gh: not logged in' };
+    return { ok: true, stdout: '', stderr: '' };
+  };
+
+  const code = await run({
+    argv: argvFor(bodyFile(t, BODY)),
+    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
+    pack: packGuard(PACK_GREEN),
+    exec,
+    resolveSha: () => SHA,
+    sleep: async () => {},
+    out,
+    err,
+  });
+
+  // A snapshot nobody could read cannot tell the deciding run from the draft's, so proceeding would
+  // watch the `opened` run of the same commit and call its verdict final.
+  assert.equal(code, UNKNOWN, 'a blind snapshot is unknown, never a failure');
+  assert.match(err.text, /the runs of this branch cannot be read/);
+  assert.ok(!calls.some((call) => call.startsWith('pr create')), 'nothing is created on a blind snapshot');
+});
+
+test('a commit that cannot be resolved refuses and creates nothing', async (t) => {
+  const out = capture();
+  const err = capture();
+  const { exec, calls } = gh();
+
+  const code = await run({
+    argv: argvFor(bodyFile(t, BODY)),
+    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
+    pack: packGuard(PACK_GREEN),
+    exec,
+    resolveSha: () => '',
+    sleep: async () => {},
+    out,
+    err,
+  });
+
+  assert.equal(code, UNKNOWN);
+  assert.match(err.text, /cannot be resolved/);
+  assert.equal(calls.length, 0, 'the refusal comes before the first gh call');
 });

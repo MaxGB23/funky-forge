@@ -77,3 +77,19 @@ and label `type:ci`; this file records the decisions that refine it, the task or
   from the ritual and stands alone. The second is `open-pr.js` with its 18 cases, and it is not split
   further: separating a ported script from the cases that pin it would separate a behaviour from its
   proof, and cutting the script itself into two commits would present half a ritual as a step.
+- **L8.** The native review (`review-28b861b24bb2b020`, lenses resilience and reliability) confirmed
+  five candidate-caused findings, two of them `BLOCKER`, and the ritual diverges from `5cfd372` to
+  answer them. They were three defects wearing five numbers:
+  - `R3-001`/`R4-001`: only the watch passed a ceiling; `gh pr create`, `pr ready`, `run list` and
+    `run view` were unbounded, so a stalled `gh` held the ritual open while the issue requires every
+    child to be bounded. Every call now goes through one `gh` wrapper carrying the wait's budget.
+  - `R3-002`/`R4-002`: the pre-ready snapshot was taken *after* the creation, so the `opened` run of the
+    same commit could be invisible to it and later selected as the deciding run; and a failed `run
+    list` returned `[]`, which is the same answer as "no runs". The snapshot now happens before the
+    creation, and `listRuns` answers `null` on failure so the command refuses instead of guessing.
+  - `R4-003`: the commit was always read from the working tree, so `--head other` waited on a branch
+    nobody asked about until the timeout, and a `git` failure yielded an empty SHA silently. It is now
+    resolved from the head branch (local, then `origin/<head>`, then the working tree only when it is
+    on that branch), and an unresolvable commit refuses before anything is created.
+  Three cases pin the corrections: every `gh` call carries the budget, a blind snapshot refuses, an
+  unresolvable commit refuses. 21 cases in the file, 256 in the suite.

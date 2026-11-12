@@ -184,7 +184,8 @@ export async function findRun({
   const attempts = Math.max(0, Math.ceil(Math.max(1, timeoutSeconds) / interval));
 
   for (let attempt = 0; attempt <= attempts; attempt += 1) {
-    const run = selectRun(listRuns(exec, { head, repo }), sha, exclude);
+    const runs = listRuns(exec, { head, repo, timeoutMs: timeoutSeconds * 1000 });
+    const run = selectRun(runs ?? [], sha, exclude);
     if (run !== null) return { run, sha, spentSeconds: attempt * interval };
 
     if (attempt < attempts) await sleep(interval * 1000);
@@ -231,6 +232,11 @@ export async function run(deps = {}) {
     return UNKNOWN;
   }
 
+  // Every `gh` call is bounded by the wait budget, not only the watch. A create, a ready or a list
+  // that stalls holds the ritual open exactly as a watch does, and a stalled child does not fail: it
+  // hangs.
+  const gh = (args) => exec(args, { timeoutMs: options.timeout * 1000 });
+
   // 1. The suite. A branch that does not parse is cheaper to fix here than in a run nobody watches.
   const tested = suite();
   if (!tested.ok) {
@@ -276,9 +282,34 @@ export async function run(deps = {}) {
     return RED;
   }
 
+  // The commit is resolved from the head branch, not from this checkout. `--head other` used to be
+  // created for `other` and then waited on the commit of the working tree, so the run it looked for
+  // belonged to a branch nobody had asked about: the wait spent its whole budget and answered unknown.
+  const sha = resolveSha(head);
+  if (typeof sha !== 'string' || sha === '') {
+    err.write(
+      `open-pr: refusing: the commit of ${head} cannot be resolved, so no run could be matched to it, and nothing was created\n`,
+    );
+    return UNKNOWN;
+  }
+
+  // The runs that exist before the creation belong to the events of the draft, and the
+  // `ready_for_review` run is the one that decides. Snapshotted *before* the creation: a run this
+  // command's own `opened` event fires carries the same commit, so a snapshot taken afterwards can be
+  // blind to it, and a green draft would be read as the verdict of a run that had not fired yet. Their
+  // ids are kept rather than their times, because this clock is not the API's clock.
+  const snapshot = listRuns(gh, { head, repo: options.repo });
+  if (snapshot === null) {
+    err.write(
+      'open-pr: refusing: the runs of this branch cannot be read, so the deciding run cannot be told from the draft\'s, and nothing was created\n',
+    );
+    return UNKNOWN;
+  }
+  const before = snapshot.map((entry) => String(entry?.databaseId));
+
   // 4. The label travels in the creation itself, which is the whole point: the `opened` run then reads
   // `PR_LABELS` filled, and a label attached afterwards never achieves that.
-  const created = exec(
+  const created = gh(
     withRepo(options.repo, [
       'pr',
       'create',
@@ -307,12 +338,10 @@ export async function run(deps = {}) {
   out.write(`open-pr: ${pullRequest.url}\n`);
 
   // The runs that exist before `gh pr ready` belong to the events of the draft, and the
-  // `ready_for_review` run is the one that decides. Their ids are snapshotted instead of their times,
-  // because this clock is not the API's clock.
-  const before = listRuns(exec, { head, repo: options.repo }).map((entry) => String(entry?.databaseId));
+  // `ready_for_review` run is the one that decides. Their ids were snapshotted before the creation.
 
   // 5. This fires the event that decides.
-  const ready = exec(withRepo(options.repo, ['pr', 'ready', String(pullRequest.number)]));
+  const ready = gh(withRepo(options.repo, ['pr', 'ready', String(pullRequest.number)]));
   if (ready?.ok !== true) {
     err.write(`open-pr: gh pr ready ${pullRequest.number} failed: the deciding run never fired\n`);
     return RED;
@@ -320,7 +349,6 @@ export async function run(deps = {}) {
 
   // 6. The run of this commit, polled until it exists. A wait that prints nothing is indistinguishable
   // from a hang, so the line is written before the first poll and not after the last.
-  const sha = resolveSha();
   out.write(`open-pr: waiting for the run of ${sha} (up to ${options.timeout}s)\n`);
 
   const found = await findRun({
@@ -367,7 +395,7 @@ export async function run(deps = {}) {
   // The watch says whether it is over; the run's own answer says what it was, and the verdict comes
   // from the matrix inside that answer. A cancelled run is not a failed one, and a summary is not a
   // gate.
-  const viewed = exec(
+  const viewed = gh(
     withRepo(options.repo, ['run', 'view', id, '--json', 'status,conclusion,jobs']),
   );
   const answer = parseJson(viewed?.stdout);
@@ -471,13 +499,32 @@ function defaultResolveHead() {
   return result.status === 0 ? result.stdout.trim() : '';
 }
 
-/** @returns {string} the commit this branch points at, the one the run must belong to */
-function defaultResolveSha() {
-  const result = spawnSync('git', ['rev-parse', 'HEAD'], {
-    encoding: 'utf8',
-    timeout: LOCAL_GIT_TIMEOUT_MS,
-  });
-  return result.status === 0 ? result.stdout.trim() : '';
+/**
+ * @param {string} head the branch the run must belong to
+ * @returns {string} the commit that branch points at, or the empty string when it cannot be resolved
+ */
+function defaultResolveSha(head) {
+  // The local branch, then its remote-tracking copy: a branch pushed from another worktree has only
+  // the second one here.
+  for (const candidate of [head, `origin/${head}`]) {
+    const result = spawnSync('git', ['rev-parse', '--verify', '--quiet', `${candidate}^{commit}`], {
+      encoding: 'utf8',
+      timeout: LOCAL_GIT_TIMEOUT_MS,
+    });
+    if (result.status === 0 && result.stdout.trim() !== '') return result.stdout.trim();
+  }
+
+  // The working tree is the last resort and only when it is on that branch. Falling back to it
+  // unconditionally is the defect the refusal above exists to prevent.
+  if (head === defaultResolveHead()) {
+    const result = spawnSync('git', ['rev-parse', '--verify', 'HEAD'], {
+      encoding: 'utf8',
+      timeout: LOCAL_GIT_TIMEOUT_MS,
+    });
+    if (result.status === 0) return result.stdout.trim();
+  }
+
+  return '';
 }
 
 /**
@@ -491,12 +538,15 @@ function withRepo(repo, args) {
 
 /**
  * @param {(args: string[], options?: object) => { ok: boolean, stdout?: string }} exec
- * @param {{ head: string, repo?: string|null }} target
- * @returns {Array<object>} the runs of that branch, newest first, or none when the API cannot answer
+ * @param {{ head: string, repo?: string|null, timeoutMs?: number }} target
+ * @returns {Array<object>|null} the runs of that branch, newest first, or `null` when the API cannot
+ *   answer — an empty list is a measurement, a failed call is not, and the two cannot share an answer
  */
-function listRuns(exec, { head, repo = null }) {
-  const answer = exec(withRepo(repo, ['run', 'list', '--branch', head, '--json', RUN_FIELDS]));
-  if (answer?.ok !== true) return [];
+function listRuns(exec, { head, repo = null, timeoutMs }) {
+  const answer = exec(withRepo(repo, ['run', 'list', '--branch', head, '--json', RUN_FIELDS]), {
+    timeoutMs,
+  });
+  if (answer?.ok !== true) return null;
 
   const runs = parseJson(answer.stdout);
   return Array.isArray(runs) ? runs : [];
