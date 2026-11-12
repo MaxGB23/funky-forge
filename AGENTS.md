@@ -44,10 +44,17 @@ edited once it is settled; the present is edited freely in its own pull request.
   a failure. For the same reason a state string can be stale — `gh pr checks --json state` has shown
   `IN_PROGRESS` for a job whose `conclusion` was `success` on a completed run — so read the conclusion
   with `gh run view <run> --json jobs` when the two disagree, and never wait on the state list.
+- **Waiting for CI is `node scripts/wait-for-ci.js <commit>`, and it is never a loop written by hand.**
+  It exits `0` passed, `1` failed and `2` unknown, and `2` never means failure: no run yet, still
+  running, or the timeout ran out. Wait on the commit and not on the branch — a watcher keyed on the
+  branch can answer with an earlier commit's run, which is how a green run gets reported as a problem.
+  The gate it reads is the matrix and not the run summary: on a push to `main` the guard makes
+  `pr-policy` read `skipped`, and that is not a failure to investigate.
 - **Conventional Commits, one logical change per commit.** The tests and the documentation that
   describe a behaviour travel in the same commit as the behaviour. No `Co-Authored-By` trailers.
-- **Before a pull request:** `node --test` and `npm run pack:check`. CI runs the suite on Ubuntu and
-  Windows for Node 22 and 24; a red Windows leg is a real failure.
+- **Before a pull request:** `node --test` and `npm run pack:check`. A suite reporting fewer tests than
+  the last run has not run faster, so read the count before trusting a green. CI runs the suite on
+  Ubuntu and Windows for Node 22 and 24; a red Windows leg is a real failure.
 - **Zero dependencies, no build step, no network at runtime.** `engines.node` is 22 or newer and there
   is nothing to install.
 - **`files` is the package contract, and the gate enforces it.** `prepublishOnly` runs the suite and
