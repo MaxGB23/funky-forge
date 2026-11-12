@@ -39,6 +39,13 @@ identically in both and lands last.
   con el camino. En la creación se identifica por piso; en la adopción, por el pull request (`gh pr list
   --head`)." — "2. Conjunto vacío tras adoptar → 2 nombrando el pull request adoptado, y la salida debe
   decir que hubo adopción. Sin eso, un verde que vino de un run adoptado no es auditable."
+- **S10 — SEC-X2: the creation label does not reach the `opened` run.** Measured on secure PR #233: "Two
+  runs of the same commit, and the `opened` one read an **empty** label set", while the same command
+  passed both runs minutes earlier on #231. "The event payload is a snapshot taken before the label is
+  queryable, so `PR_LABELS` can be empty in the run that the creation fires." Option A, "vale para los
+  dos repos": "the policy reads the labels **live** — `gh pr view <n> --json labels` — instead of trusting
+  `PR_LABELS` from the event" ... "as its own unit; the `AGENTS.md` correction lands immediately because
+  it is a false statement in a document that tells maintainers what to do."
 
 ## Tasks
 
@@ -48,6 +55,8 @@ identically in both and lands last.
 | T2 | S4, S5, S6, S9 | On a failed creation, `gh pr list --head <head>`; adopt the pull request it names and continue, identified by head, with its three cases and the adopted-empty-set case | `517debc` |
 | T3 | S7 | One clause in `AGENTS.md` naming the cost of a ready pull request | `0f4a4be` |
 | T4 | S8 | Answer `SEC-X1`; do not touch `scripts/pack-guard.js` while secure's port is open | accepted, nothing changed |
+| T5 | S10 | Correct the false claim in `scripts/open-pr.js` (the creation label does not make `PR_LABELS` readable in the `opened` run) | comment only, same commit |
+| T6 | S10 | Option A as its own unit: `pr-policy` reads the labels live instead of the event payload, in both repositories | not started, needs authorization and an issue |
 
 ## Log
 
@@ -130,3 +139,18 @@ identically in both and lands last.
 - **L8.** T3 landed as `0f4a4be`: the `AGENTS.md` bullet now states the price — an interrupted ritual
   leaves a real pull request instead of a harmless draft, which is why the command adopts the pull
   request of the head. Suite and `pack:check` green on the same tree.
+- **L9.** SEC-X2 received through the human: "SEC-X2 en la memoria 1762 (proyecto funky-forge-v2). Su
+  primer PR va a chocar con lo mismo, y la opción A —que pr-policy lea las etiquetas en vivo con gh pr
+  view <n> --json labels— vale para los dos repos." Answer: `SEC-X2: aceptada` — A is the right cure and
+  it is the same lesson as the floor: a frozen snapshot is not evidence about the present. Measured fact
+  from 1762: on secure #233 the `opened` run of a labelled creation read `PR_LABELS` empty while #231
+  passed with the same command.
+  T5 landed here as a comment correction in `scripts/open-pr.js`: forge's `AGENTS.md` never claimed the
+  `opened` run sees the label (it claims only that the label travels in the creation, which is true), so
+  the false sentence was the comment above `pr create`; the test suite is untouched and stays 271/271.
+  T6 (option A: `pr-policy` reads the labels live, its own unit, identical in both repositories) is **not
+  started**: it changes CI behaviour and the shared contract, so it needs authorization and, under this
+  repository's policy, an issue with `status:approved` first. Note for whoever takes it: forge calls
+  `runPolicy` from `open-pr.js` **before** the pull request exists, so there is no number to read live at
+  that step — the live read belongs to the run that already knows its pull request, and the local
+  pre-creation check keeps using the label it is about to apply.

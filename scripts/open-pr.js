@@ -439,10 +439,13 @@ export async function run(deps = {}) {
   }
   const floor = floorOf(floorRead.runs, sha);
 
-  // 4. The label travels in the creation itself, which is the whole point: the `opened` run then reads
-  // `PR_LABELS` filled, and a label attached afterwards never achieves that. The pull request is created
-  // ready because a draft would fire a run and then a second event would fire another of the same
-  // commit, and the API carries nothing that tells the two runs apart afterwards.
+  // 4. The label travels in the creation itself, so the pull request is never born without its type and
+  // a label attached afterwards cannot leave a run that read nothing. That is where it ends: the payload
+  // of the `opened` run is a snapshot taken before the label is queryable, so it can still read
+  // `PR_LABELS` empty — measured on funky-secure #233, where the same command passed minutes earlier —
+  // which is why the gate has to read the labels live (SEC-X2) instead of trusting that payload. The
+  // pull request is created ready because a draft would fire a run and then a second event would fire
+  // another of the same commit, and the API carries nothing that tells the two runs apart afterwards.
   const created = gh(
     withRepo(options.repo, [
       'pr',
