@@ -78,6 +78,22 @@ Provenance **survives** staged approval — measured on `funky-secure@0.10.2`, w
 attestation names `git+https://github.com/…@refs/tags/v0.10.2` and its `gitCommit`. That attestation is
 the only link between the commit and the bytes a user installs, so it is recorded in the release body.
 
+### Being published is not being indexed
+
+Measured 2026-11-11 on this package. `0.1.0` had been live since 07-nov with a complete description,
+five keywords, a `repository` and a 7.9 kB README in the registry document, and the registry's search
+returned **no result** for `funky-forge` among the first 250 results of its own exact name, while its
+sibling package stood first for its own. Publishing `0.2.0` created the missing index document and the
+package came back as the **first** result, with nothing else changed. The plausible trigger is the
+window this runbook creates on purpose: the name is claimed and the real version is published from CI
+minutes later. Whatever the cause, the distinction is what matters — the registry can hold a published
+version whose index document does not exist, and the absence is not evidence that the metadata, the
+README or the name is wrong.
+
+So this is a check and not a step: when a package seems invisible, query the search index for its exact
+name and compare against a sibling published the same way. If it is missing, publishing again is the
+remedy that was measured; rewriting metadata is not.
+
 ## The GitHub Release
 
 Written by the maintainer **after** the approval, never by the workflow that staged. Release
