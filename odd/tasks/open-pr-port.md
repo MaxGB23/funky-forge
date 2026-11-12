@@ -103,3 +103,31 @@ and label `type:ci`; this file records the decisions that refine it, the task or
   correction introduced, and no amount of re-running fixes it: the deciding run has to be told apart
   from the draft's, and by id alone it cannot be. The correction budget is spent, so the next step is a
   maintainer decision, not another attempt inside this lineage.
+- **L10.** The criterion was wrong, not just the placement. A reviewer of the sibling repository named it
+  and the reasoning is now the specification: identifying the deciding run **by exclusion of a set** has
+  a race in every arrangement, because the set can grow after it is read. Waiting for the draft's run
+  before `gh pr ready` — my first proposal — only trades the race for a tool that refuses in every
+  repository whose CI skips drafts, which is the common arrangement, so it would be unusable where it is
+  most needed. The replacement is a floor, not a set: `databaseId` is global and monotone by creation, so
+  the run of the earlier event has the smaller id whether or not it is visible yet.
+  - `maxIdBefore` = the greatest `databaseId` among the runs of this commit, taken immediately before
+    `gh pr ready`, or `0` when the branch has none.
+  - After ready, the deciding run is the one of this commit whose id is above that floor. Exactly one,
+    it decides. Two or more, it is ambiguous and the answer is `2`, never a pick. None within the
+    budget, `2`.
+  - A `gh pr ready` that reports the pull request was already ready fired no event, so no run can be
+    attributed to it: `2`.
+  - No `Date.now()`, no `createdAt`: the API's clock and this machine's are not the same clock. That
+    constraint is the reason the floor is an id.
+  The false green is the worst defect this script can carry — it authorizes what was not authorized and
+  breaks nothing visible — so the first test is that false green, written red before the fix.
+- **L11.** Two reads, because they have two jobs, and the fork was worth naming:
+  1. **Before `gh pr create`** — fail-closed only: if the runs cannot be read, refuse and create nothing.
+     The ids it returns are discarded; its value is that a blind command never creates a pull request.
+  2. **Immediately before `gh pr ready`** — the actual `maxIdBefore`. The draft exists by then, so the
+     `opened` run it fired is normally behind the floor. If this second read fails, the draft was created
+     and is deliberately **not** marked ready: a draft that never fires the deciding event is harmless,
+     and guessing is not.
+  Taking the floor only before the creation (the first implementation) leaves floor `0` in the common
+  case, so the `opened` run is still the sole candidate above it and the false green survives: the
+  placement is part of the criterion, not a detail of it.

@@ -10,11 +10,12 @@ import {
   UNKNOWN,
   decideVerdict,
   failingCount,
+  floorOf,
   packOptions,
   parseArgs,
   pullRequestFrom,
   run,
-  selectRun,
+  runsPastFloor,
   suiteOptions,
 } from '../scripts/open-pr.js';
 
@@ -32,13 +33,22 @@ function capture() {
 
 /**
  * A `gh` whose answers are written here and nowhere else. Call order decides which `run list` answer is
- * served: the first one is the snapshot taken before `gh pr ready`, every later one is the API after the
- * deciding event.
+ * served: the first is the fail-closed read taken before anything is created, the second is the floor
+ * read taken immediately before `gh pr ready`, and every later one is a poll after the deciding event.
+ *
+ * `runs` is either the one answer every poll gets, or one answer per poll, the last one repeating:
+ * `[[], [opened, ready]]` is a run that is not visible yet and then is, which is the shape of the race.
  */
-function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snapshot = [], runs = [], conclusion = 'success', jobs = null, watch = {} } = {}) {
+function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snapshot = [], floor = [], floorOk = true, runs = [], ready = {}, conclusion = 'success', jobs = null, watch = {} } = {}) {
   const calls = [];
   const seen = [];
   let lists = 0;
+
+  const poll = (index) => {
+    if (!Array.isArray(runs) || runs.length === 0) return [];
+    if (!Array.isArray(runs[0])) return runs;
+    return runs[Math.min(index, runs.length - 1)];
+  };
 
   const exec = (args, options) => {
     calls.push(args.join(' '));
@@ -46,10 +56,18 @@ function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snaps
     const [group, action] = args;
 
     if (group === 'pr' && action === 'create') return { ok: true, stdout: create, stderr: '' };
-    if (group === 'pr' && action === 'ready') return { ok: true, stdout: '', stderr: '' };
+    if (group === 'pr' && action === 'ready') {
+      return { ok: ready.ok ?? true, stdout: ready.stdout ?? '', stderr: ready.stderr ?? '' };
+    }
     if (group === 'run' && action === 'list') {
       lists += 1;
-      return { ok: true, stdout: JSON.stringify(lists === 1 ? snapshot : runs), stderr: '' };
+      if (lists === 1) return { ok: true, stdout: JSON.stringify(snapshot), stderr: '' };
+      if (lists === 2) {
+        return floorOk
+          ? { ok: true, stdout: JSON.stringify(floor), stderr: '' }
+          : { ok: false, stdout: '', stderr: 'gh: not logged in' };
+      }
+      return { ok: true, stdout: JSON.stringify(poll(lists - 3)), stderr: '' };
     }
     if (group === 'run' && action === 'watch') {
       return { ok: watch.ok ?? true, timedOut: watch.timedOut === true, stdout: '', stderr: '' };
@@ -164,18 +182,23 @@ test('counts the failures the reporter summarized, in either reporter', () => {
   assert.equal(failingCount(undefined), null);
 });
 
-test('the run is chosen by its commit, not by being the newest of the branch', () => {
+test('the run is chosen by its commit and by being past the floor, not by being the newest', () => {
   const runs = [
     { databaseId: 11, headSha: 'ffffffffffffffffffffffffffffffffffffffff', conclusion: 'success' },
     { databaseId: 22, headSha: SHA, conclusion: 'success' },
     { databaseId: 7, headSha: SHA, conclusion: 'failure' },
   ];
 
-  assert.equal(selectRun(runs, SHA).databaseId, 22, 'the newest run of this commit');
-  assert.equal(selectRun(runs, SHA, ['22']).databaseId, 7, 'a run that already existed cannot decide it');
-  assert.equal(selectRun(runs, SHA, ['22', '7']), null);
-  assert.equal(selectRun(runs, 'not-a-sha'), null);
-  assert.equal(selectRun(undefined, SHA), null, 'an unreadable answer is no run, not a crash');
+  // The runs of this commit, never another commit's: the branch also carries runs of a previous head.
+  assert.deepEqual(runsPastFloor(runs, SHA, 0).map((run) => run.databaseId), [22, 7]);
+  // A run past the floor of its own greatest id belongs to an event that fired before that id, and
+  // there is no exclusion set to name it back in: a run older than the floor is not a candidate at all.
+  assert.deepEqual(runsPastFloor(runs, SHA, 22), []);
+  assert.deepEqual(runsPastFloor(runs, SHA, floorOf(runs, SHA)), []);
+  assert.equal(floorOf(runs, SHA), 22, 'the greatest id of this commit, not of the branch');
+  assert.equal(floorOf(runs, 'not-a-sha'), 0, 'a commit with no run has a floor of zero');
+  assert.equal(floorOf(undefined, SHA), 0, 'an unreadable answer is no floor, not a crash');
+  assert.deepEqual(runsPastFloor(undefined, SHA), [], 'and no candidates either');
 });
 
 test('the pull request number comes from the URL the creation printed', () => {
@@ -336,11 +359,176 @@ test('creates a labelled draft, marks it ready and returns the run of this commi
   assert.match(out.text, /pull\/42 {2}· {2}passed/, 'the verdict is printed');
 });
 
+test('a run of the draft that appears after ready can never decide, because its id is older', async (t) => {
+  const out = capture();
+  const err = capture();
+  // The `opened` event `gh pr create --draft` fires carries this same commit and is green, and it is not
+  // visible when the floor is taken. It appears during the wait, behind the `ready_for_review` run that
+  // has the greater id: nothing in the answer says which of the two the ready fired, so neither decides.
+  const draft = { databaseId: 1001, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const deciding = { databaseId: 1002, headSha: SHA, status: 'in_progress', conclusion: null };
+  const { exec, calls } = gh({ snapshot: [], runs: [[], [deciding, draft]] });
+
+  const code = await run({
+    argv: argvFor(bodyFile(t, BODY)),
+    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
+    pack: packGuard(PACK_GREEN),
+    exec,
+    resolveSha: () => SHA,
+    sleep: async () => {},
+    out,
+    err,
+  });
+
+  assert.equal(code, UNKNOWN, 'a green run of the draft is not the verdict of the ready event');
+  assert.doesNotMatch(out.text, /·  passed/, 'never green, however green the draft run was');
+  assert.match(out.text, /unknown/, 'the answer says it cannot tell, which is not a failure');
+  assert.equal(calls.filter((call) => call.startsWith('run watch')).length, 0, 'no run is watched');
+});
+
+test('the run of this event decides once its id is past the floor', async (t) => {
+  // The `opened` run is already visible when the floor is taken, so it is the floor; the run the ready
+  // fires is the only one past it, and the matrix inside that run is the verdict.
+  const opened = { databaseId: 1001, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const deciding = { databaseId: 1002, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const path = bodyFile(t, BODY);
+
+  const greenOut = capture();
+  const greenErr = capture();
+  const greenGh = gh({ floor: [opened], runs: [deciding] });
+  const greenCode = await run({
+    argv: argvFor(path),
+    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
+    pack: packGuard(PACK_GREEN),
+    exec: greenGh.exec,
+    resolveSha: () => SHA,
+    sleep: async () => {},
+    out: greenOut,
+    err: greenErr,
+  });
+
+  assert.equal(greenCode, GREEN, greenErr.text);
+  const watched = greenGh.calls.find((call) => call.startsWith('run watch'));
+  assert.match(String(watched), /^run watch 1002 /, 'the run past the floor, never the one at it');
+  assert.match(greenOut.text, /·  passed/);
+
+  const redOut = capture();
+  const redErr = capture();
+  const redGh = gh({
+    floor: [opened],
+    runs: [deciding],
+    conclusion: 'failure',
+    jobs: [{ name: 'test', conclusion: 'failure' }],
+    watch: { ok: false },
+  });
+  const redCode = await run({
+    argv: argvFor(path),
+    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
+    pack: packGuard(PACK_GREEN),
+    exec: redGh.exec,
+    resolveSha: () => SHA,
+    sleep: async () => {},
+    out: redOut,
+    err: redErr,
+  });
+
+  assert.equal(redCode, RED, 'a failed job in the deciding run is a failed pull request');
+  assert.match(String(redGh.calls.find((call) => call.startsWith('run watch'))), /^run watch 1002 /);
+});
+
+test('two runs past the floor are ambiguous, not a choice', async (t) => {
+  const out = capture();
+  const err = capture();
+  const first = { databaseId: 1002, headSha: SHA, status: 'in_progress', conclusion: null };
+  const second = { databaseId: 1003, headSha: SHA, status: 'in_progress', conclusion: null };
+  const { exec, calls } = gh({ snapshot: [], runs: [first, second] });
+
+  const code = await run({
+    argv: argvFor(bodyFile(t, BODY)),
+    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
+    pack: packGuard(PACK_GREEN),
+    exec,
+    resolveSha: () => SHA,
+    sleep: async () => {},
+    out,
+    err,
+  });
+
+  assert.equal(code, UNKNOWN, 'two candidates are a question, not a verdict');
+  assert.match(out.text, /1002/, 'the message names the first id');
+  assert.match(out.text, /1003/, 'and the second');
+  assert.match(out.text, /unknown/);
+  assert.equal(calls.filter((call) => call.startsWith('run watch')).length, 0, 'neither is picked and watched');
+});
+
+test('a ready that changed nothing is unknown, never a verdict', async (t) => {
+  const out = capture();
+  const err = capture();
+  // `gh pr ready` on an already-ready pull request fires no event, so no run belongs to it and a verdict
+  // read from whatever the branch has would be a verdict on an event nobody caused.
+  const { exec, calls } = gh({
+    snapshot: [],
+    runs: [{ databaseId: 1002, headSha: SHA, status: 'completed', conclusion: 'success' }],
+    ready: { ok: true, stdout: '', stderr: '✓ Pull request #42 is already ready for review\n' },
+  });
+
+  const code = await run({
+    argv: argvFor(bodyFile(t, BODY)),
+    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
+    pack: packGuard(PACK_GREEN),
+    exec,
+    resolveSha: () => SHA,
+    sleep: async () => {},
+    out,
+    err,
+  });
+
+  assert.equal(code, UNKNOWN, 'no event fired is not a red check');
+  assert.match(out.text, /already ready/);
+  assert.equal(calls.filter((call) => call.startsWith('run watch')).length, 0, 'nothing is watched');
+  assert.equal(calls.filter((call) => call.startsWith('run view')).length, 0, 'and nothing is judged');
+  assert.equal(
+    calls.filter((call) => call.startsWith('run list')).length,
+    2,
+    'the fail-closed read and the floor read, and no poll after a ready that fired nothing',
+  );
+});
+
+test('a floor that cannot be read once the draft exists refuses, and never marks it ready', async (t) => {
+  const out = capture();
+  const err = capture();
+  // The fail-closed read succeeded, so a draft exists; the read that would bound the deciding event
+  // failed. A draft never marked ready fires that event never, which is harmless: guessing is not.
+  const { exec, calls } = gh({
+    snapshot: [],
+    floorOk: false,
+    runs: [{ databaseId: 22, headSha: SHA, conclusion: 'success' }],
+  });
+
+  const code = await run({
+    argv: argvFor(bodyFile(t, BODY)),
+    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
+    pack: packGuard(PACK_GREEN),
+    exec,
+    resolveSha: () => SHA,
+    sleep: async () => {},
+    out,
+    err,
+  });
+
+  assert.equal(code, UNKNOWN, 'a blind floor is unknown, never a failure');
+  assert.ok(calls.some((call) => call.startsWith('pr create')), 'the draft exists by then');
+  assert.ok(!calls.some((call) => call.startsWith('pr ready')), 'and it is deliberately not marked ready');
+  assert.equal(calls.filter((call) => call.startsWith('run watch')).length, 0, 'and nothing is watched');
+  assert.match(out.text, /was created and deliberately not marked ready/, 'the message says what happened');
+  assert.doesNotMatch(err.text, /nothing was created/, 'this is not the pre-creation refusal');
+});
+
 test('a run that finished before the pull request was ready cannot decide it', async (t) => {
   const out = capture();
   const err = capture();
   const stale = { databaseId: 9, headSha: SHA, conclusion: 'success' };
-  const { exec, calls } = gh({ snapshot: [stale], runs: [stale] });
+  const { exec, calls } = gh({ floor: [stale], runs: [stale] });
 
   const code = await run({
     argv: argvFor(bodyFile(t, BODY)),
@@ -532,9 +720,9 @@ test('a run snapshot that cannot be read refuses before anything is created', as
     err,
   });
 
-  // A snapshot nobody could read cannot tell the deciding run from the draft's, so proceeding would
-  // watch the `opened` run of the same commit and call its verdict final.
-  assert.equal(code, UNKNOWN, 'a blind snapshot is unknown, never a failure');
+  // A list nobody could read cannot set the floor, so proceeding would let the `opened` run of this
+  // same commit — which the creation itself fires — stand in for the run of the ready event.
+  assert.equal(code, UNKNOWN, 'a blind floor is unknown, never a failure');
   assert.match(err.text, /the runs of this branch cannot be read/);
   assert.ok(!calls.some((call) => call.startsWith('pr create')), 'nothing is created on a blind snapshot');
 });
