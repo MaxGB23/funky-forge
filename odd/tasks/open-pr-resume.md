@@ -170,3 +170,11 @@ identically in both and lands last.
 - **L12.** Delivery is untouched: no push, no issue, no pull request. Under this repository's policy the
   issue carries `status:approved` before a branch goes up, and the pull request is opened with
   `node scripts/open-pr.js`.
+- **L13.** User authorised delivery: "issue y pr crea". Issue #41 opened from this record with the bug
+  template and `type:bug`, then `status:approved` applied — the same instruction is the maintainer's
+  approval the policy gates the branch on. Branch pushed, pull request #42 opened by
+  `node scripts/open-pr.js` (suite green, packed set green, policy green) and its verdict read over the
+  set: runs `43326602663` and `43326602129`, both `passed`, every job success on `ubuntu-24.04` and
+  `windows-2025` for Node 22 and 24. The set rule held in production on its first real pull request:
+  two runs of `0c5e271c4d0db1c45c568a04a04528df52a996fb`, both ids printed, exit 0 — the case that used
+  to be `unknown` and would earlier have been reported as one chosen run.
