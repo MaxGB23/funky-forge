@@ -93,3 +93,13 @@ and label `type:ci`; this file records the decisions that refine it, the task or
     on that branch), and an unresolvable commit refuses before anything is created.
   Three cases pin the corrections: every `gh` call carries the budget, a blind snapshot refuses, an
   unresolvable commit refuses. 21 cases in the file, 256 in the suite.
+- **L9.** The targeted validator **rejected** the correction (`state: escalated`,
+  `targeted_validator_rejected`). Three findings it accepted as addressed: `R3-001`/`R4-001` (every `gh`
+  call now carries the budget), `R3-002` (a failed snapshot refuses instead of returning `[]`) and
+  `R4-003` (the commit comes from the head branch, and an unresolvable one refuses before the first
+  call). One it did not, and it is right: moving the snapshot *before* the creation means the `opened`
+  run that this very command fires can never be in the exclusion set, so `findRun` can still select it
+  after `gh pr ready` and report a green draft as the verdict. That is `REG-001`, a regression my own
+  correction introduced, and no amount of re-running fixes it: the deciding run has to be told apart
+  from the draft's, and by id alone it cannot be. The correction budget is spent, so the next step is a
+  maintainer decision, not another attempt inside this lineage.
