@@ -72,3 +72,9 @@ this file records the decisions that refine it, the task order, and the evidence
   - `R4-001`, the child processes carried no ceiling, so a stalled `gh` held the process open past the
     timeout it promised. Every `spawnSync` now receives the wait's own budget as its `timeout`, and
     `run` accepts an injected `spawn` so the ceiling is asserted instead of assumed.
+- **L8.** The native review closed `approved` after the bounded correction
+  (`sha256:d5e130769381f20a859913d96e6c4c7971d391bc419bc0290c32d6f67c790991`), and the receipt was
+  acknowledged, so its authority is burned. Three advisory findings arrived with the approval and none
+  of them blocks: `R3-2` at `scripts/wait-for-ci.js:117-118`, `R4-002` at `76-89` and `R4-003` at
+  `117-141`, all `WARNING`. They are follow-up work on a later candidate, never a reason to re-run the
+  review of this one.
