@@ -63,3 +63,12 @@ this file records the decisions that refine it, the task order, and the evidence
   that pin it, which is the one split the repository rules forbid. The boundary is the file:
   `scripts/wait-for-ci.js` and `tests/wait-for-ci.test.js` arrive whole, and the rule in `AGENTS.md` is
   one bullet plus one clause in the pre-pull-request rule.
+- **L7.** The native review (lineage `review-7f40170f28085c2f`, lenses resilience and reliability)
+  confirmed two severe findings and the port diverges from its source to answer them, so S1 now means
+  "the two decisions arrive unchanged", not "the bytes are identical":
+  - `R3-1`, `decideGate` let the run summary veto a green matrix, which is the stale field reporting a
+    green run as a problem. A failed job is still a failure whatever the summary says; a summary that
+    disagrees with an accepted matrix is now `2`, never `1`.
+  - `R4-001`, the child processes carried no ceiling, so a stalled `gh` held the process open past the
+    timeout it promised. Every `spawnSync` now receives the wait's own budget as its `timeout`, and
+    `run` accepts an injected `spawn` so the ceiling is asserted instead of assumed.

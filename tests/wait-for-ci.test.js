@@ -57,6 +57,18 @@ test('fails when the run says success but a job did not, because the gate is the
   assert.match(verdict.reason, /outside success, skipped and neutral/);
 });
 
+test('does not call a green matrix a failure because the run summary disagrees with it', () => {
+  // The asymmetry is the point: a summary may not hide a red job, but it also may not invent one. A
+  // summary that says failure while every job says success is the stale field, and the honest answer
+  // is `2`.
+  const verdict = decideGate({ run: { ...COMPLETED, conclusion: 'failure' }, jobs: MATRIX });
+
+  assert.equal(verdict.code, UNKNOWN, 'a stale summary is undecided, not a red check');
+  assert.notEqual(verdict.code, FAIL);
+  assert.match(verdict.reason, /concluded failure while every job is accepted/);
+  assert.equal(verdict.lines.length, 3, 'the matrix still prints, so a reader can judge for themselves');
+});
+
 test('does not decide while the run is still going', () => {
   const verdict = decideGate({ run: { ...COMPLETED, status: 'in_progress', conclusion: null }, jobs: [] });
 
@@ -171,6 +183,28 @@ test('the command line asks for the full commit, because an abbreviated one answ
   assert.equal(code, PASS);
   assert.match(calls[0], new RegExp(fullSha), 'the API is asked about the resolved commit');
   assert.doesNotMatch(calls[0], /--commit 7ddd30d /, 'the abbreviated form never reaches the API');
+});
+
+test('every child process it starts is bounded by the wait, so a stalled gh cannot hang it', async () => {
+  // `gh` on a network stall, or waiting for a credential nobody will supply, never returns. The poll
+  // would then hold the process open past the timeout it promised and exit with nothing at all.
+  const fullSha = '7ddd30d0bae816d390572c05e4610070ccd4d26e';
+  const bounded = [];
+  const spawn = (command, args, options) => {
+    bounded.push({ command, options });
+    if (command === 'git') return { status: 0, stdout: `${fullSha}\n` };
+    const answer = args[1] === 'list' ? [COMPLETED] : { jobs: MATRIX };
+    return { status: 0, stdout: JSON.stringify(answer) };
+  };
+  const out = capture();
+
+  const code = await run({ argv: ['7ddd30d', '--timeout', '30'], spawn, sleep: async () => {}, out });
+
+  assert.equal(code, PASS);
+  assert.ok(bounded.length >= 3, 'the pass went through git and both gh answers');
+  for (const { command, options } of bounded) {
+    assert.equal(options.timeout, 30_000, `${command} is bounded by the wait, not by the network`);
+  }
 });
 
 test('a wait that is still undecided says so once per change, so it never looks hung', async () => {

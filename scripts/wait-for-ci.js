@@ -9,7 +9,9 @@
  *
  * The accepted conclusions are the ones `AGENTS.md` names for the merge gate. A run whose own
  * conclusion says success but which carries a failed job is a failure here, because the gate is the
- * matrix and not the run's summary.
+ * matrix and not the run's summary. The reverse is not symmetric: a summary that disagrees with a
+ * green matrix is the stale field that once reported a green run as a problem, so it is unknown and
+ * never a failure.
  */
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
@@ -22,6 +24,18 @@ export const UNKNOWN = 2;
 const ACCEPTED = new Set(['success', 'skipped', 'neutral']);
 const DEFAULT_TIMEOUT_SECONDS = 900;
 const DEFAULT_INTERVAL_SECONDS = 15;
+
+/**
+ * The options every child process gets. The timeout is not a nicety: `gh` on a network stall, or
+ * waiting for a credential it will never be given, does not return, and a poll that cannot return is
+ * a hang wearing the costume of a wait. Bounded by the wait's own budget, so `--timeout 30` cannot
+ * take minutes because one call blocked.
+ *
+ * @param {number} timeoutMs
+ */
+export function childOptions(timeoutMs) {
+  return { encoding: 'utf8', timeout: timeoutMs };
+}
 
 /**
  * The gate, as a function of what the API answered. No clock, no process: the three callers — the
@@ -50,20 +64,30 @@ export function decideGate({ run = null, jobs = [] } = {}) {
     return { code: UNKNOWN, state: 'unknown', reason: 'the run reports no job', lines };
   }
 
-  // The run's own conclusion is not the gate: the matrix is. A run that says success while a job
-  // failed is exactly the reading that made a red check look green.
+  // The matrix is the gate, so a failed job is a failure whatever the run summary says. The reverse
+  // does not follow: a summary that disagrees with a green matrix is the stale field this command
+  // exists to survive, and a stale field is a run nobody can decide yet — never a red check.
   const rejected = list.filter((job) => !ACCEPTED.has(job.conclusion));
-  const runAccepted = ACCEPTED.has(run.conclusion);
 
-  if (runAccepted && rejected.length === 0) {
-    return { code: PASS, state: 'passed', reason: `run ${run.databaseId ?? ''}`.trim(), lines };
+  if (rejected.length > 0) {
+    return {
+      code: FAIL,
+      state: 'failed',
+      reason: `${rejected.length} job(s) outside success, skipped and neutral`,
+      lines,
+    };
   }
 
-  const reason =
-    rejected.length > 0
-      ? `${rejected.length} job(s) outside success, skipped and neutral`
-      : `the run concluded ${run.conclusion ?? 'in an unreadable state'}`;
-  return { code: FAIL, state: 'failed', reason, lines };
+  if (!ACCEPTED.has(run.conclusion)) {
+    return {
+      code: UNKNOWN,
+      state: 'unknown',
+      reason: `the run concluded ${run.conclusion ?? 'in an unreadable state'} while every job is accepted`,
+      lines,
+    };
+  }
+
+  return { code: PASS, state: 'passed', reason: `run ${run.databaseId ?? ''}`.trim(), lines };
 }
 
 /**
@@ -159,25 +183,12 @@ export async function wait({
  * would read as "no run yet" and wait out the whole timeout for. That is what happened on the first
  * run of this script against its own merge commit.
  *
- * @param {{ argv?: string[], exec?: Function, sleep?: Function, out?: { write: Function }, resolveSha?: (arg: string) => string }} [deps]
+ * @param {{ argv?: string[], exec?: Function, spawn?: Function, sleep?: Function, out?: { write: Function }, resolveSha?: (arg: string) => string }} [deps]
  * @returns {Promise<number>}
  */
 export async function run(deps = {}) {
   const argv = deps.argv ?? process.argv.slice(2);
   const out = deps.out ?? process.stdout;
-  const exec =
-    deps.exec ??
-    ((args) => {
-      const result = spawnSync('gh', args, { encoding: 'utf8' });
-      return { ok: result.status === 0, stdout: result.stdout ?? '' };
-    });
-  const sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
-  const resolveSha =
-    deps.resolveSha ??
-    ((argument) => {
-      const result = spawnSync('git', ['rev-parse', '--verify', `${argument}^{commit}`], { encoding: 'utf8' });
-      return result.status === 0 ? result.stdout.trim() : argument;
-    });
 
   const option = (name, fallback) => {
     const index = argv.indexOf(`--${name}`);
@@ -192,6 +203,26 @@ export async function run(deps = {}) {
     return previous !== '--timeout' && previous !== '--interval';
   });
   const sha = positional[0];
+  const timeoutSeconds = option('timeout', DEFAULT_TIMEOUT_SECONDS);
+  const intervalSeconds = option('interval', DEFAULT_INTERVAL_SECONDS);
+
+  // A child process that never returns would hold the process open past the wait it belongs to, so
+  // every call carries the wait's own budget as its ceiling.
+  const spawn = deps.spawn ?? spawnSync;
+  const callOptions = childOptions(Math.max(1, timeoutSeconds) * 1000);
+  const exec =
+    deps.exec ??
+    ((args) => {
+      const result = spawn('gh', args, callOptions);
+      return { ok: result.status === 0, stdout: result.stdout ?? '' };
+    });
+  const sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const resolveSha =
+    deps.resolveSha ??
+    ((argument) => {
+      const result = spawn('git', ['rev-parse', '--verify', `${argument}^{commit}`], callOptions);
+      return result.status === 0 ? result.stdout.trim() : argument;
+    });
 
   if (typeof sha !== 'string' || sha === '') {
     out.write('wait-for-ci: a commit is required: node scripts/wait-for-ci.js <commit>\n');
@@ -203,8 +234,8 @@ export async function run(deps = {}) {
     exec,
     sleep,
     out,
-    timeoutSeconds: option('timeout', DEFAULT_TIMEOUT_SECONDS),
-    intervalSeconds: option('interval', DEFAULT_INTERVAL_SECONDS),
+    timeoutSeconds,
+    intervalSeconds,
   });
 }
 
