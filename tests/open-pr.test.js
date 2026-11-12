@@ -39,15 +39,24 @@ function capture() {
  * `runs` is either the one answer every poll gets, or one answer per poll, the last one repeating:
  * `[[], [decided]]` is a run that is not visible yet and then is.
  */
-function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snapshot = [], runs = [], floorRead = null, conclusion = 'success', jobs = null, watch = {} } = {}) {
+function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snapshot = [], runs = [], floorRead = null, conclusion = 'success', jobs = null, watch = {}, views = {} } = {}) {
   const calls = [];
   const seen = [];
+  // What the API has said about each run id so far, so `run view` answers what the list said about that
+  // run: a run whose status is in progress is not a concluded run merely because a view was asked.
+  const known = new Map();
   let lists = 0;
 
   const poll = (index) => {
+    if (typeof runs === 'function') return runs(index);
     if (!Array.isArray(runs) || runs.length === 0) return [];
     if (!Array.isArray(runs[0])) return runs;
     return runs[Math.min(index, runs.length - 1)];
+  };
+
+  const remember = (list) => {
+    if (Array.isArray(list)) for (const run of list) known.set(String(run?.databaseId), run);
+    return list;
   };
 
   const exec = (args, options) => {
@@ -62,23 +71,29 @@ function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snaps
       // read failing, which is a refusal and not a pull request to repair afterwards.
       if (lists === 1) {
         return floorRead === null
-          ? { ok: true, stdout: JSON.stringify(snapshot), stderr: '' }
+          ? { ok: true, stdout: JSON.stringify(remember(snapshot)), stderr: '' }
           : { ok: false, stdout: '', stderr: 'gh: not logged in' };
       }
-      return { ok: true, stdout: JSON.stringify(poll(lists - 2)), stderr: '' };
+      return { ok: true, stdout: JSON.stringify(remember(poll(lists - 2))), stderr: '' };
     }
     if (group === 'run' && action === 'watch') {
       return { ok: watch.ok ?? true, timedOut: watch.timedOut === true, stdout: '', stderr: '' };
     }
     if (group === 'run' && action === 'view') {
       // The matrix travels with the answer: the verdict is read from the jobs, so a stub without them
-      // is a run nobody can judge, and that is exactly what the gate refuses to call green.
+      // is a run nobody can judge, and that is exactly what the gate refuses to call green. A run's
+      // status is the one the list reported for it, unless the case names its own answer.
+      const id = String(args[2]);
+      const answer = { ...(known.get(id) ?? {}), ...(views[id] ?? {}) };
+      const settled = answer.status ?? 'completed';
+      const jobList =
+        answer.jobs ?? jobs ?? [{ name: 'test', conclusion: answer.conclusion ?? conclusion }];
       return {
         ok: true,
         stdout: JSON.stringify({
-          status: 'completed',
-          conclusion,
-          jobs: (jobs ?? [{ name: 'test', conclusion }]).map((job) => ({ ...job })),
+          status: settled,
+          conclusion: answer.conclusion ?? (settled === 'completed' ? conclusion : null),
+          jobs: jobList.map((job) => ({ ...job })),
         }),
         stderr: '',
       };
@@ -345,10 +360,9 @@ test('creates the pull request ready and returns the run of this commit', async 
 
   assert.ok(!calls.some((call) => call.startsWith('pr ready')), 'no readiness step, so no second event to attribute');
 
-  const watched = calls.find((call) => call.startsWith('run watch'));
-  assert.match(watched, /^run watch 22 /, 'the run of this commit, never the newest run of the branch');
-  assert.match(watched, /--exit-status/);
-  assert.match(watched, /--interval 15/);
+  const viewed = calls.find((call) => call.startsWith('run view'));
+  assert.match(viewed, /^run view 22 /, 'the run of this commit, never the newest run of the branch');
+  assert.ok(!calls.some((call) => call.startsWith('run watch')), 'a run that already concluded is not waited for');
 
   assert.match(out.text, /https:\/\/github\.com\/MaxGB23\/funky-forge\/pull\/42/, 'the URL is printed');
   assert.match(out.text, /open-pr: run 22 {2}·/, 'the run id is printed');
@@ -357,31 +371,35 @@ test('creates the pull request ready and returns the run of this commit', async 
   assert.match(out.text, /pull\/42 {2}· {2}passed/, 'the verdict is printed');
 });
 
-test('two runs of this commit that surface together cannot decide, and neither is picked', async (t) => {
-  const out = capture();
-  const err = capture();
-  // A run of this commit existed before the floor was taken but was not visible to it, and the run the
-  // creation fired appears in the same poll. Both are past the floor and the green one is the older: the
-  // answer says nothing about which of them the creation fired, so neither decides.
-  const earlier = { databaseId: 1001, headSha: SHA, status: 'completed', conclusion: 'success' };
-  const later = { databaseId: 1002, headSha: SHA, status: 'in_progress', conclusion: null };
-  const { exec, calls } = gh({ snapshot: [], runs: [[], [later, earlier]] });
+test('the two runs the creation fires are both green, and every id is printed', async (t) => {
+  // `gh pr create --label` fires `opened` and `labeled` of this commit, so two runs past the floor are
+  // the ordinary answer. Neither the count nor the API names the action behind a run, so none is
+  // chosen: the set is green when all of it is.
+  const opened = { databaseId: 1001, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const labeled = { databaseId: 1002, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const { exec, calls } = gh({ snapshot: [], runs: [[], [labeled, opened]] });
+  const { out, err, deps } = frontHalf(t, { exec });
 
-  const code = await run({
-    argv: argvFor(bodyFile(t, BODY)),
-    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
-    pack: packGuard(PACK_GREEN),
-    exec,
-    resolveSha: () => SHA,
-    sleep: async () => {},
-    out,
-    err,
-  });
+  assert.equal(await run(deps), GREEN, err.text);
+  assert.match(out.text, /open-pr: run 1002 {2}· {2}passed/, 'the first id of the set is printed');
+  assert.match(out.text, /open-pr: run 1001 {2}· {2}passed/, 'and the second, so the set can be audited');
+  assert.match(out.text.trimEnd().split('\n').pop(), /pull\/42 {2}· {2}passed/);
+  assert.equal(calls.filter((call) => call.startsWith('run watch')).length, 0, 'both concluded: nothing to wait for');
+});
 
-  assert.equal(code, UNKNOWN, 'a run that was already there is not the verdict of the creation');
-  assert.doesNotMatch(out.text, /·  passed/, 'never green, however green that run was');
-  assert.match(out.text, /unknown/, 'the answer says it cannot tell, which is not a failure');
-  assert.equal(calls.filter((call) => call.startsWith('run watch')).length, 0, 'no run is watched');
+test('a red run in the set wins over a run that is still going', async (t) => {
+  // Any red wins: the set does not have to be finished to know the outcome, and waiting for the other
+  // run would only delay a verdict that cannot change.
+  const failed = { databaseId: 1002, headSha: SHA, status: 'completed', conclusion: 'failure' };
+  const running = { databaseId: 1003, headSha: SHA, status: 'in_progress', conclusion: null };
+  const { exec, calls } = gh({ snapshot: [], runs: [[], [running, failed]] });
+  const { out, err, deps } = frontHalf(t, { exec });
+
+  assert.equal(await run(deps), RED);
+  assert.match(out.text, /open-pr: run 1002 {2}· {2}failed — 1 job\(s\) outside success/, 'the failing run is named, with its reason');
+  assert.match(out.text, /open-pr: run 1003 {2}· {2}unknown/, 'and the run still going is reported, never hidden');
+  assert.equal(calls.filter((call) => call.startsWith('run watch')).length, 0, 'no watch delays a red that is already known');
+  assert.equal(err.text, '');
 });
 
 test('the run of this event decides once its id is past the floor', async (t) => {
@@ -406,8 +424,8 @@ test('the run of this event decides once its id is past the floor', async (t) =>
   });
 
   assert.equal(greenCode, GREEN, greenErr.text);
-  const watched = greenGh.calls.find((call) => call.startsWith('run watch'));
-  assert.match(String(watched), /^run watch 1002 /, 'the run past the floor, never the one at it');
+  const viewed = greenGh.calls.find((call) => call.startsWith('run view'));
+  assert.match(String(viewed), /^run view 1002 /, 'the run past the floor, never the one at it');
   assert.match(greenOut.text, /·  passed/);
 
   const redOut = capture();
@@ -431,32 +449,27 @@ test('the run of this event decides once its id is past the floor', async (t) =>
   });
 
   assert.equal(redCode, RED, 'a failed job in the deciding run is a failed pull request');
-  assert.match(String(redGh.calls.find((call) => call.startsWith('run watch'))), /^run watch 1002 /);
+  assert.match(String(redGh.calls.find((call) => call.startsWith('run view'))), /^run view 1002 /);
+  assert.ok(!redGh.calls.some((call) => call.startsWith('run watch')), 'a concluded red is never waited for');
 });
 
-test('two runs past the floor are ambiguous, not a choice', async (t) => {
-  const out = capture();
-  const err = capture();
-  const first = { databaseId: 1002, headSha: SHA, status: 'in_progress', conclusion: null };
-  const second = { databaseId: 1003, headSha: SHA, status: 'in_progress', conclusion: null };
-  const { exec, calls } = gh({ snapshot: [], runs: [first, second] });
-
-  const code = await run({
-    argv: argvFor(bodyFile(t, BODY)),
-    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
-    pack: packGuard(PACK_GREEN),
-    exec,
-    resolveSha: () => SHA,
-    sleep: async () => {},
-    out,
-    err,
+test('a set still growing when the budget runs out is unknown, and names what it saw', async (t) => {
+  // The set decides once it holds still. One that is still growing has not been read whole, so no
+  // verdict covers it: exit 2, naming the ids that were seen so the answer can be audited.
+  const { exec, calls } = gh({
+    snapshot: [],
+    runs: (index) => [{ databaseId: 1002 + index, headSha: SHA, status: 'completed', conclusion: 'success' }],
   });
+  const { out, deps } = frontHalf(t, { exec });
 
-  assert.equal(code, UNKNOWN, 'two candidates are a question, not a verdict');
-  assert.match(out.text, /1002/, 'the message names the first id');
-  assert.match(out.text, /1003/, 'and the second');
-  assert.match(out.text, /unknown/);
-  assert.equal(calls.filter((call) => call.startsWith('run watch')).length, 0, 'neither is picked and watched');
+  assert.equal(await run(deps), UNKNOWN, 'a set nobody could read whole is a question, not a verdict');
+  assert.match(
+    out.text,
+    /were still growing when the budget ran out \(1002, 1003, 1004, 1005, 1006, 1007\)/,
+    'every id that was seen is named',
+  );
+  assert.doesNotMatch(out.text, /·  passed/, 'never green on a set that was still changing');
+  assert.equal(calls.filter((call) => call.startsWith('run watch')).length, 0, 'nothing is watched on a set that is not whole');
 });
 
 test('a floor that cannot be read refuses before anything is created, so nothing was created', async (t) => {
@@ -554,7 +567,12 @@ test('a watch that runs out of time is unknown, never a failure', async (t) => {
   });
 
   assert.equal(code, UNKNOWN, 'a timeout is not a red check');
-  assert.equal(calls.filter((call) => call.startsWith('run view')).length, 0, 'an unfinished run has no conclusion to read');
+  assert.equal(calls.filter((call) => call.startsWith('run view')).length, 1, 'the run answers once, as unfinished');
+  assert.match(
+    String(calls.find((call) => call.startsWith('run watch'))),
+    /^run watch 22 --exit-status --interval 15$/,
+    'the unfinished run is what is waited for, and the wait is bounded by the interval',
+  );
   assert.match(out.text, /unknown — the run did not conclude within 30s; this is not a failure/);
 });
 
@@ -724,17 +742,19 @@ function frontHalf(t, overrides) {
   return { out, err, deps };
 }
 
-test('a poll that sees one run alone is not a decision, because the set grew', async (t) => {
-  // A run of this commit existed before the floor was taken but was not visible to it, so the first poll
-  // sees it alone and green; the run the creation fired appears while the second read is taken.
+test('a set that grew between two reads is read again, and decides once it holds still', async (t) => {
+  // A run of this commit existed before the floor was taken but was not visible to it, so the first read
+  // sees one run; the run the creation fired appears while the second read is taken. Growth is answered
+  // with another read, not with a refusal.
   const earlier = { databaseId: 1001, headSha: SHA, status: 'completed', conclusion: 'success' };
-  const later = { databaseId: 1002, headSha: SHA, status: 'in_progress', conclusion: null };
+  const later = { databaseId: 1002, headSha: SHA, status: 'completed', conclusion: 'failure' };
   const { exec, calls } = gh({ snapshot: [], runs: [[earlier], [earlier, later]] });
-  const { out, deps } = frontHalf(t, { exec });
-  assert.equal(await run(deps), UNKNOWN, 'the run that was already there is not what the creation fired');
-  assert.doesNotMatch(out.text, /passed/, 'never green, however green that run was');
-  assert.match(out.text, /1001, 1002/, 'both ids are named, so the answer can be audited');
-  assert.ok(!calls.some((call) => call.startsWith('run watch')), 'no run is watched on a set that did not hold still');
+  const { out, err, deps } = frontHalf(t, { exec });
+  assert.equal(await run(deps), RED, 'the set decides by its contents once it holds still');
+  assert.match(out.text, /open-pr: run 1001 {2}· {2}passed/, 'the run that was already there is read too');
+  assert.match(out.text, /open-pr: run 1002 {2}· {2}failed/, 'and the one the creation fired decides the set');
+  assert.equal(calls.filter((call) => call.startsWith('run watch')).length, 0, 'both concluded: nothing to wait for');
+  assert.equal(err.text, '');
 });
 
 test('one run that is still the only one on the second read decides on the matrix', async (t) => {
@@ -790,7 +810,7 @@ test('a suite or a packed set that does not answer is unknown, never red', async
 test('the deciding run is the one the creation fired, when it appears later', async (t) => {
   // The commit already has a run of an earlier push, and the floor hides it. The run this creation
   // fired is not visible on the first poll: it surfaces one interval later, alone past the floor, and
-  // that one is watched because the only event this command fires is the creation.
+  // that one is read, because the run behind the floor can never be the one the creation fired.
   const earlier = { databaseId: 7, headSha: SHA, status: 'completed', conclusion: 'success' };
   const decided = { databaseId: 9, headSha: SHA, status: 'completed', conclusion: 'success' };
   const { exec, calls } = gh({ snapshot: [earlier], runs: [[earlier], [earlier, decided]] });
@@ -799,6 +819,7 @@ test('the deciding run is the one the creation fired, when it appears later', as
   const code = await run(half.deps);
 
   assert.equal(code, GREEN, half.err.text);
-  assert.ok(calls.some((call) => /^run watch 9 /.test(call)), `the run the creation fired is watched: ${calls.join(' | ')}`);
-  assert.ok(!calls.some((call) => /^run watch 7 /.test(call)), 'the run behind the floor is not');
+  assert.ok(calls.some((call) => /^run view 9 /.test(call)), `the run the creation fired is the one read: ${calls.join(' | ')}`);
+  assert.ok(!calls.some((call) => /^run (view|watch) 7 /.test(call)), 'the run behind the floor is never read');
+  assert.match(half.out.text, /open-pr: run 9 {2}· {2}passed/);
 });
