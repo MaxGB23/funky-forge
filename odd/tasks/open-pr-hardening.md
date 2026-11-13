@@ -124,3 +124,16 @@ T1 and T2 are disjoint in files; T2 may travel in its own commit while T1 is bei
   themselves in that output: the wait printed `up to 894s`, the seconds left of the declared 900 after the
   suite and the packed set rather than the declared number, and the remote check passed before anything was
   created.
+- **L12.** CI on `b770e61` came back red: `test (windows-2025, 24)` failed with `29999 !== 30000` in
+  `every gh call is bounded, not only the watch` — my own assertion, in the test I updated for S4. The
+  deadline is taken from a real clock and the milliseconds already spent are subtracted, so a machine one
+  millisecond slower hands the first child 29 999; the fake-clock cases pin the arithmetic exactly, and that
+  one had no business demanding a constant. Fixed in `9175022`: no child past the budget, none handed
+  nothing, the first handed the whole of it minus what was already spent. Run `43370600961` passed on all
+  four legs.
+- **L13.** The fix changed the candidate, so `assess` reported the review due again. Second lineage
+  `review-4d7dd00fbca339d4`, one lens (`reliability`, because what changed is what a test pins), 610 lines,
+  correction budget 200: approved with three advisory findings, none blocking (`scripts/open-pr.js:648`,
+  `tests/open-pr.test.js:738`, and a suggestion at `scripts/open-pr.js:789-799`). Explicitly not
+  re-reviewed as a whole under three lenses — the four rules were already approved in
+  `review-d5c34bfe71fac667`, and a change that touches one concern pays for one lens.
