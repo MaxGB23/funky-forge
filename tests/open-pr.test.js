@@ -730,7 +730,14 @@ test('every gh call is bounded, not only the watch', async (t) => {
       `every child is bounded by the one budget: ${JSON.stringify(options)}`,
     );
   }
-  assert.equal(seen[0]?.timeoutMs, 30_000, 'and the first child is handed the whole of it');
+  // The deadline is taken from a real clock and the milliseconds already spent are subtracted, so the first
+  // child is handed the whole budget minus however long the steps before it really took. Demanding exactly
+  // 30 000 turned a machine that was a millisecond slower into a red matrix — the number is the budget, not
+  // a constant, and the fake-clock cases above are the ones that pin it exactly.
+  assert.ok(
+    seen[0]?.timeoutMs <= 30_000 && seen[0]?.timeoutMs > 29_000,
+    `the first child is handed the whole of it, minus what was already spent: ${seen[0]?.timeoutMs}`,
+  );
 });
 
 test('a commit that cannot be resolved refuses and creates nothing', async (t) => {
