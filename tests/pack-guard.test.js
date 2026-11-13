@@ -131,9 +131,13 @@ test('on Unix npm on the path is a symlink, and what it points at decides', () =
 
 test('the path is read under either of its names', () => {
   // Windows spells the variable `Path`; a lookup that reads only `PATH` finds nothing on some machines and
-  // reports a missing npm that is installed.
-  const host = machine({ env: { Path: 'C:\\tools' }, files: [join('C:\\tools', 'npm-cli.js')] });
-  assert.equal(npmCli(host), join('C:\\tools', 'npm-cli.js'));
+  // reports a missing npm that is installed. The directory is built with `join` rather than written as a
+  // Windows path, because `C:\\tools` splits on the `:` of a drive letter wherever the delimiter is not
+  // `;` and the case would then fail on the platform it is not describing.
+  const directory = join(import.meta.dirname, 'fake-prefix', 'tools');
+  const cli = join(directory, 'npm-cli.js');
+  const host = machine({ env: { Path: directory }, files: [cli] });
+  assert.equal(npmCli(host), cli);
 });
 
 test('a shell shim is not npm, and what was tried is named when nothing is', () => {
