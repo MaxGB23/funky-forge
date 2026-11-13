@@ -723,9 +723,14 @@ test('every gh call is bounded, not only the watch', async (t) => {
   assert.equal(code, GREEN, err.text);
   assert.ok(seen.length >= 4, `create, list, ready, watch and view all go through one child: ${seen.length}`);
   for (const options of seen) {
-    // `argvFor` asks for `--timeout 30`, so the ceiling of every child is 30 s, not only the watch's.
-    assert.equal(options?.timeoutMs, 30_000, 'the wait budget is the ceiling of every child');
+    // `argvFor` asks for `--timeout 30`, so no child may go past 30 s and none may be handed nothing: the
+    // number is one budget spent down, not a per-call allowance repeated.
+    assert.ok(
+      Number.isFinite(options?.timeoutMs) && options.timeoutMs <= 30_000 && options.timeoutMs >= 1_000,
+      `every child is bounded by the one budget: ${JSON.stringify(options)}`,
+    );
   }
+  assert.equal(seen[0]?.timeoutMs, 30_000, 'and the first child is handed the whole of it');
 });
 
 test('a commit that cannot be resolved refuses and creates nothing', async (t) => {
@@ -1047,6 +1052,68 @@ test('a head the remote does not have is refused, and says so plainly', async (t
     err.text,
     /^open-pr: refusing: origin has no branch feat\/open-pr, so there is no commit to wait on; nothing was created$/m,
   );
+});
+
+test('every gh child spends what is left of one budget, never the whole of it again', async (t) => {
+  // Before: the floor read, the creation and the wait each took the declared number, and every `run view`
+  // inside the wait took it again — a declared ten minutes that could hold the ritual open for forty. One
+  // deadline is taken before the first child, and each child is handed what is left of it.
+  const costs = [];
+  let clock = 0;
+  const run1 = { databaseId: 22, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const inner = gh({ snapshot: [], runs: [run1] });
+  const exec = (args, options) => {
+    costs.push(options?.timeoutMs);
+    clock += 4000;
+    return inner.exec(args, options);
+  };
+  const { deps } = frontHalf(t, { exec, now: () => clock });
+
+  assert.equal(await run(deps), GREEN);
+  assert.ok(costs.length >= 5, `the whole ritual has to be measured, and ${costs.length} children were seen`);
+  assert.equal(costs[0], 30000, 'the first child is handed the whole declared budget');
+  assert.deepEqual(
+    costs,
+    costs.map((_, index) => Math.max(1000, 30000 - 4000 * index)),
+    'each child is handed what is left of one deadline, not the declared number again',
+  );
+});
+
+test('a child is never handed less than a second, whatever the clock says', async (t) => {
+  // A zero timeout kills a child before it runs and reports a ceiling that was never reached, which reads
+  // as a step that did not answer. The floor keeps the last child a real attempt.
+  const costs = [];
+  let clock = 0;
+  const run1 = { databaseId: 22, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const inner = gh({ snapshot: [], runs: [run1] });
+  const exec = (args, options) => {
+    costs.push(options?.timeoutMs);
+    clock += 60000;
+    return inner.exec(args, options);
+  };
+  const { deps } = frontHalf(t, { exec, now: () => clock });
+
+  assert.equal(await run(deps), GREEN);
+  assert.equal(costs[0], 30000);
+  assert.equal(costs[1], 1000, 'the deadline passed, and the next child is still given one second rather than none');
+  assert.ok(costs.slice(1).every((cost) => cost === 1000), `after the deadline every child gets the floor: ${costs}`);
+});
+
+test('the wait is told the seconds that are left, and prints them', async (t) => {
+  // The line a human reads before waiting has to be the number the wait actually got, or the declared
+  // budget and the observed one disagree in the output that is supposed to explain the difference.
+  let clock = 0;
+  const run1 = { databaseId: 22, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const inner = gh({ snapshot: [], runs: [run1] });
+  const exec = (args, options) => {
+    clock += 4000;
+    return inner.exec(args, options);
+  };
+  const { out, deps } = frontHalf(t, { exec, now: () => clock });
+
+  assert.equal(await run(deps), GREEN);
+  // Two children before the wait — the floor and the creation — so eight seconds are spent.
+  assert.match(out.text, new RegExp(`waiting for the runs of ${SHA} \\(up to 22s\\)`));
 });
 
 test('a suite or a packed set that does not answer is unknown, never red', async (t) => {

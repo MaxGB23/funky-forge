@@ -282,6 +282,7 @@ export async function findRun({
   sleep,
   timeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
   intervalSeconds = DEFAULT_INTERVAL_SECONDS,
+  remainingMs = null,
 }) {
   const interval = Math.max(1, intervalSeconds);
   const attempts = Math.max(0, Math.ceil(Math.max(1, timeoutSeconds) / interval));
@@ -289,9 +290,14 @@ export async function findRun({
   // What the wait has spent, so a poll is bounded by what is left of the budget, not by the whole of it.
   const started = Date.now();
   const spent = () => Math.min(timeoutSeconds, (Date.now() - started) / 1000);
+  // One deadline belongs to the whole ritual, so a poll that stalls cannot spend again what an earlier
+  // child already spent: when the caller owns that deadline, its remaining milliseconds bound the poll.
+  const pollBudgetMs = () =>
+    typeof remainingMs === 'function'
+      ? remainingMs()
+      : Math.max(1, Math.ceil(timeoutSeconds - spent())) * 1000;
   const poll = () => {
-    const remaining = Math.max(1, Math.ceil(timeoutSeconds - spent()));
-    const { runs, timedOut } = listRuns(exec, { head, repo, timeoutMs: remaining * 1000 });
+    const { runs, timedOut } = listRuns(exec, { head, repo, timeoutMs: pollBudgetMs() });
     return { candidates: runs === null ? [] : runsPastFloor(runs, sha, floor), timedOut };
   };
   const done = (fields) =>
@@ -337,7 +343,7 @@ function unanswered(stream, step, ceiling, left) {
 /**
  * The command line, and the ritual it refuses to skip.
  *
- * @param {{ argv?: string[], exec?: Function, suite?: () => { ok: boolean, stdout: string }, pack?: () => { ok: boolean, stdout: string } | null, resolveHead?: () => string, resolveSha?: () => string, sleep?: (ms: number) => Promise<void>, out?: { write: Function }, err?: { write: Function } }} [deps]
+ * @param {{ argv?: string[], exec?: Function, suite?: () => { ok: boolean, stdout: string }, pack?: () => { ok: boolean, stdout: string } | null, resolveHead?: () => string, resolveSha?: () => string, remoteSha?: (head: string, options?: { timeoutMs?: number }) => { ok: boolean, sha: string }, now?: () => number, sleep?: (ms: number) => Promise<void>, out?: { write: Function }, err?: { write: Function } }} [deps]
  * @returns {Promise<number>}
  */
 export async function run(deps = {}) {
@@ -350,6 +356,7 @@ export async function run(deps = {}) {
   const resolveHead = deps.resolveHead ?? defaultResolveHead;
   const resolveSha = deps.resolveSha ?? defaultResolveSha;
   const remoteSha = deps.remoteSha ?? defaultRemoteSha;
+  const now = deps.now ?? (() => Date.now());
   const sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
 
   const { options, problems, help } = parseArgs(argv);
@@ -373,9 +380,22 @@ export async function run(deps = {}) {
     return UNKNOWN;
   }
 
-  // Every `gh` call is bounded by the wait budget, not only the watch. A create or a list that stalls
-  // holds the ritual open exactly as a watch does, and a stalled child does not fail: it hangs.
-  const gh = (args) => exec(args, { timeoutMs: options.timeout * 1000 });
+  // One deadline, taken before the first child, because the declared timeout is the budget of the whole
+  // ritual and not of each step in it. Before this, the floor read, the creation and the wait each took
+  // the full number and every `run view` inside the wait took it again, so a declared ten minutes could
+  // hold the ritual open for forty. A child that stalls holds the ritual open exactly as a watch does,
+  // and a stalled child does not fail: it hangs.
+  let deadline = null;
+  const budget = () => (deadline ??= now() + options.timeout * 1000);
+  const remainingMs = () => Math.max(1000, budget() - now());
+  const remainingSeconds = () => Math.max(1, Math.round((budget() - now()) / 1000));
+  // What the last child was actually handed, so a ceiling that was reached is named as it was given and
+  // not as the declared number.
+  let lastCeilingMs = 1000;
+  const gh = (args) => {
+    lastCeilingMs = remainingMs();
+    return exec(args, { timeoutMs: lastCeilingMs });
+  };
 
   // 1. The suite. A branch that does not parse is cheaper to fix here than in a run nobody watches. A
   // child killed at its ceiling did not fail; it did not answer.
@@ -441,7 +461,7 @@ export async function run(deps = {}) {
   // elsewhere, or the remote cannot be read, the run this command wants can never be matched, and the
   // measured cost of finding out through the wait was 10m 50s and a `2` whose reason was true and
   // useless. Both commits are named, because the reading is the action.
-  const remote = remoteSha(head);
+  const remote = remoteSha(head, { timeoutMs: remainingMs() });
   if (remote?.ok !== true) {
     err.write(
       `open-pr: refusing: the commit of origin/${head} cannot be read, so whether this branch is the commit in front of you is unknown; nothing was created\n`,
@@ -502,7 +522,7 @@ export async function run(deps = {}) {
 
   // The creation may have happened and nobody answered whether it did: a guess either duplicates the
   // pull request or claims a failure that may not exist.
-  if (created?.timedOut === true) return unanswered(out, 'gh pr create', `its ceiling of ${options.timeout}s`, `whether a pull request was created cannot be told: check gh pr list --head ${head} before rerunning`);
+  if (created?.timedOut === true) return unanswered(out, 'gh pr create', `its ceiling of ${Math.round(lastCeilingMs / 1000)}s`, `whether a pull request was created cannot be told: check gh pr list --head ${head} before rerunning`);
 
   let pullRequest = pullRequestFrom(created?.stdout);
   let adopted = false;
@@ -558,8 +578,9 @@ export async function run(deps = {}) {
 
   // 5. The runs of this commit past the floor, polled until the set of them holds still. A wait that
   // prints nothing is indistinguishable from a hang, so the line is written before the first poll and not
-  // after the last.
-  out.write(`open-pr: waiting for the runs of ${sha} (up to ${options.timeout}s)\n`);
+  // after the last — and it prints the seconds the wait was handed, not the declared number.
+  const waitSeconds = remainingSeconds();
+  out.write(`open-pr: waiting for the runs of ${sha} (up to ${waitSeconds}s)\n`);
 
   const found = await findRun({
     exec,
@@ -570,7 +591,8 @@ export async function run(deps = {}) {
     // the command took its floor, so a floor would hide exactly the runs it is here to report.
     floor: adopted ? 0 : floor,
     sleep,
-    timeoutSeconds: options.timeout,
+    timeoutSeconds: waitSeconds,
+    remainingMs,
     intervalSeconds: DEFAULT_INTERVAL_SECONDS,
   });
 
@@ -588,8 +610,8 @@ export async function run(deps = {}) {
   if (ids.length === 0) {
     out.write(
       adopted
-        ? `open-pr: unknown — no run of ${sha} appeared within ${options.timeout}s for the adopted ${pullRequest.url}, so it has no verdict; this is not a failure\n`
-        : `open-pr: unknown — no run of ${sha} appeared within ${options.timeout}s that the creation could have fired; this is not a failure\n`,
+        ? `open-pr: unknown — no run of ${sha} appeared within ${waitSeconds}s for the adopted ${pullRequest.url}, so it has no verdict; this is not a failure\n`
+        : `open-pr: unknown — no run of ${sha} appeared within ${waitSeconds}s that the creation could have fired; this is not a failure\n`,
     );
     return UNKNOWN;
   }
@@ -623,7 +645,7 @@ export async function run(deps = {}) {
     // Only a run that has not answered is waited for: waiting on a set that already holds a red would
     // delay a verdict that cannot change. Each call is bounded by what is left of the budget, because a
     // command that never returns is how the wait this replaces got skipped.
-    const remaining = Math.max(1, Math.round(options.timeout - found.spentSeconds));
+    const remaining = remainingSeconds();
     for (const { id } of undecided(decided)) {
       const watched = exec(
         withRepo(options.repo, [
@@ -656,7 +678,7 @@ export async function run(deps = {}) {
   const code = isRed(decided) ? RED : undecided(decided).length === 0 ? GREEN : UNKNOWN;
   if (code === UNKNOWN) {
     const waiting = decided.length === 1 ? 'the run' : `${undecided(decided).length} of ${decided.length} runs`;
-    out.write(`open-pr: unknown — ${waiting} did not conclude within ${options.timeout}s; this is not a failure\n`);
+    out.write(`open-pr: unknown — ${waiting} did not conclude within ${waitSeconds}s; this is not a failure\n`);
   }
   out.write(
     `open-pr: ${pullRequest.url}  ·  ${code === RED ? 'failed' : code === GREEN ? 'passed' : 'unknown'}\n`,
