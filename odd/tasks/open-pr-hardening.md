@@ -117,3 +117,10 @@ T1 and T2 are disjoint in files; T2 may travel in its own commit while T1 is bei
 - **L10.** Six advisory findings stand as later work and do not reopen this candidate: R3-002
   (`scripts/open-pr.js:220`), R3-003 (`:550`), R3-004 (`scripts/pack-guard.js:139`), R3-005 (SUGGESTION,
   `scripts/open-pr.js:788-798`), R4-001 (`:648`), R4-002 (`scripts/pack-guard.js:132`).
+- **L11.** Delivered as pull request #44, opened by `node scripts/open-pr.js` with `type:bug` and `Closes #43`
+  (suite green, packed set green, policy green). The run of `f125bff` was read over the set: `43370335326`
+  and `43370334715`, both `passed`, every job success on `ubuntu-24.04` and `windows-2025` for Node 22 and
+  24 — the Ubuntu legs are the ones the corrected `Path` case protects. Two of the four rules showed
+  themselves in that output: the wait printed `up to 894s`, the seconds left of the declared 900 after the
+  suite and the packed set rather than the declared number, and the remote check passed before anything was
+  created.
