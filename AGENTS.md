@@ -38,12 +38,19 @@ edited once it is settled; the present is edited freely in its own pull request.
 - **Three facts make a pull request reviewable**, and `scripts/check-pr-policy.js` checks them: the
   body links an issue (`Closes`/`Fixes`/`Refs #N`), exactly one `type:*` label is applied, and the
   branch is `type/description` with a Conventional Commit type.
-- **A pull request is created ready, so one event fires one run, and that run is the decision.**
+- **A pull request is created ready, and the runs it fires are decided as a set.**
   `node scripts/open-pr.js` puts the label in the creation and never opens a draft, because GitHub does
   not say which pull-request action created a run: a draft's `opened` run and the `ready_for_review` run
   carry the same commit and both report `event: pull_request`, so a ritual with two events cannot tell
-  them apart afterwards, and one that avoids the second event does not have to. The run of this commit is
-  then watched by the same command, and its floor is read before anything is created. A state string can
+  them apart afterwards, and one that avoids the second event does not have to. The price of that choice
+  is named rather than hidden: an interrupted ritual leaves a **real pull request** instead of a harmless
+  draft, which is why `node scripts/open-pr.js` adopts the pull request of the head instead of failing on
+  a creation that finds it already there. It is not one event
+  either — the workflow triggers on `labeled`, so a labelled creation fires `opened` and `labeled`, two
+  runs of this commit. The floor of run ids is read before anything is created, every run past it is a
+  candidate, the set is polled until it stops growing, and the set decides: any red wins, an all-green
+  set is green printing every id, and anything still running is `2`. The trigger list is not narrowed for
+  it: `labeled` is a real guard for a hand-made pull request. A state string can
   still be stale — `gh pr checks --json state` has shown `IN_PROGRESS` for a job whose `conclusion` was
   `success` on a completed run — so read the conclusion with `gh run view <run> --json jobs` when the two
   disagree, and never wait on the state list.
