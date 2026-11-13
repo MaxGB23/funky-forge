@@ -264,6 +264,7 @@ test('a red packed-set gate refuses before anything is created and names the gat
     pack: packGuard({ ok: false, stdout: 'pack-guard: bin/funky-forge.js is not covered by files\n' }),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -301,6 +302,7 @@ test('the packed-set gate is skipped when the repository has no guard to run', a
     },
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -350,6 +352,7 @@ test('creates the pull request ready and returns the run of this commit', async 
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -427,6 +430,7 @@ test('the run of this event decides once its id is past the floor', async (t) =>
     pack: packGuard(PACK_GREEN),
     exec: greenGh.exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out: greenOut,
     err: greenErr,
@@ -452,6 +456,7 @@ test('the run of this event decides once its id is past the floor', async (t) =>
     pack: packGuard(PACK_GREEN),
     exec: redGh.exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out: redOut,
     err: redErr,
@@ -495,6 +500,7 @@ test('a floor that cannot be read refuses before anything is created, so nothing
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -545,6 +551,7 @@ test('a run of this commit that existed before the creation stays behind the flo
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -570,6 +577,7 @@ test('a watch that runs out of time is unknown, never a failure', async (t) => {
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -605,6 +613,7 @@ test('a run that concluded failure exits 1 and still names the pull request', as
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -634,6 +643,7 @@ test('a cancelled run with a green matrix is unknown, never a failure', async (t
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -704,6 +714,7 @@ test('every gh call is bounded, not only the watch', async (t) => {
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -747,6 +758,7 @@ function frontHalf(t, overrides) {
     suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
     pack: packGuard(PACK_GREEN),
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -828,6 +840,7 @@ test('a creation that fails because the pull request exists adopts it and report
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -857,6 +870,7 @@ test('a creation that fails with no pull request for the head is red, naming wha
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -885,6 +899,7 @@ test('a creation that fails while the head cannot be read is unknown, never red'
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -916,6 +931,7 @@ test('an adopted pull request with no run is unknown, and names the pull request
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -947,6 +963,7 @@ test('a creation that succeeded with an unreadable URL is red, and nothing is ad
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -976,6 +993,7 @@ test('a pull request of this head at another commit is not adopted', async (t) =
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -989,6 +1007,46 @@ test('a pull request of this head at another commit is not adopted', async (t) =
   );
   assert.equal(calls.filter((call) => call.startsWith('run view')).length, 0, 'no verdict is read from another commit');
   assert.doesNotMatch(out.text, /adopted/);
+});
+
+test('a remote branch at another commit is refused, naming both', async (t) => {
+  // The wait looks for a run of the commit in front of you, and a run belongs to the commit origin has. If
+  // the branch was pushed from somewhere else, the run this command wants can never appear here, and the
+  // honest answer is a refusal that names both commits — not ten minutes spent and a reason that cannot
+  // be acted on.
+  const other = 'f'.repeat(40);
+  const { exec, calls } = gh();
+  const { out, err, deps } = frontHalf(t, { exec, remoteSha: () => ({ ok: true, sha: other }) });
+
+  assert.equal(await run(deps), UNKNOWN, 'a branch that is not this commit is a refusal, and 2 never means failure');
+  assert.match(err.text, /^open-pr: refusing: origin\/feat\/open-pr is at f{40}, not at a1b2c3d4e5f60718293a4b5c6d7e8f9012345678, so the run of this commit could never appear here; nothing was created$/m);
+  assert.equal(calls.filter((call) => call.startsWith('pr create')).length, 0, 'nothing is created on a branch the remote does not have');
+  assert.doesNotMatch(out.text, /waiting for the runs/, 'and nothing is waited on either');
+});
+
+test('a remote nobody can read is refused, never assumed equal', async (t) => {
+  // A read that did not answer is evidence of nothing. Treating it as agreement would wait on the wrong
+  // commit silently; treating it as a difference would accuse a branch nobody looked at. Refuse.
+  const { exec, calls } = gh();
+  const { err, deps } = frontHalf(t, { exec, remoteSha: () => ({ ok: false, sha: '' }) });
+
+  assert.equal(await run(deps), UNKNOWN);
+  assert.match(
+    err.text,
+    /^open-pr: refusing: the commit of origin\/feat\/open-pr cannot be read, so whether this branch is the commit in front of you is unknown; nothing was created$/m,
+  );
+  assert.equal(calls.filter((call) => call.startsWith('pr create')).length, 0);
+});
+
+test('a head the remote does not have is refused, and says so plainly', async (t) => {
+  const { exec } = gh();
+  const { err, deps } = frontHalf(t, { exec, remoteSha: () => ({ ok: true, sha: '' }) });
+
+  assert.equal(await run(deps), UNKNOWN);
+  assert.match(
+    err.text,
+    /^open-pr: refusing: origin has no branch feat\/open-pr, so there is no commit to wait on; nothing was created$/m,
+  );
 });
 
 test('a suite or a packed set that does not answer is unknown, never red', async (t) => {

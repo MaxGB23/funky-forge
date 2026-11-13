@@ -349,6 +349,7 @@ export async function run(deps = {}) {
   const pack = deps.pack ?? defaultPack;
   const resolveHead = deps.resolveHead ?? defaultResolveHead;
   const resolveSha = deps.resolveSha ?? defaultResolveSha;
+  const remoteSha = deps.remoteSha ?? defaultRemoteSha;
   const sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
 
   const { options, problems, help } = parseArgs(argv);
@@ -431,6 +432,31 @@ export async function run(deps = {}) {
   if (typeof sha !== 'string' || sha === '') {
     err.write(
       `open-pr: refusing: the commit of ${head} cannot be resolved, so no run could be matched to it, and nothing was created\n`,
+    );
+    return UNKNOWN;
+  }
+
+  // The commit of the branch on origin, before anything is created. The wait looks for a run of the
+  // commit in front of you, and a run belongs to the commit origin has: when the branch was pushed from
+  // elsewhere, or the remote cannot be read, the run this command wants can never be matched, and the
+  // measured cost of finding out through the wait was 10m 50s and a `2` whose reason was true and
+  // useless. Both commits are named, because the reading is the action.
+  const remote = remoteSha(head);
+  if (remote?.ok !== true) {
+    err.write(
+      `open-pr: refusing: the commit of origin/${head} cannot be read, so whether this branch is the commit in front of you is unknown; nothing was created\n`,
+    );
+    return UNKNOWN;
+  }
+  if (typeof remote.sha !== 'string' || remote.sha === '') {
+    err.write(
+      `open-pr: refusing: origin has no branch ${head}, so there is no commit to wait on; nothing was created\n`,
+    );
+    return UNKNOWN;
+  }
+  if (remote.sha !== sha) {
+    err.write(
+      `open-pr: refusing: origin/${head} is at ${remote.sha}, not at ${sha}, so the run of this commit could never appear here; nothing was created\n`,
     );
     return UNKNOWN;
   }
@@ -729,6 +755,26 @@ function defaultResolveHead() {
  * @param {string} head the branch the run must belong to
  * @returns {string} the commit that branch points at, or the empty string when it cannot be resolved
  */
+/**
+ * The commit `refs/heads/<head>` is at on origin, from `git ls-remote`. Three answers, kept apart because
+ * they lead to three different sentences: the commit, no such branch, and a remote that did not answer.
+ *
+ * @param {string} head
+ * @param {{ timeoutMs?: number }} [options]
+ * @returns {{ ok: boolean, sha: string }}
+ */
+function defaultRemoteSha(head, { timeoutMs } = {}) {
+  const result = spawnSync('git', ['ls-remote', 'origin', `refs/heads/${head}`], {
+    encoding: 'utf8',
+    timeout: timeoutMs ?? LOCAL_GIT_TIMEOUT_MS,
+  });
+  if (result.status !== 0) return { ok: false, sha: '' };
+
+  const line = String(result.stdout ?? '').trim().split('\n')[0];
+  const sha = line.split('\t')[0].trim();
+  return { ok: true, sha: /^[0-9a-f]{40}$/.test(sha) ? sha : '' };
+}
+
 function defaultResolveSha(head) {
   // The local branch, then its remote-tracking copy: a branch pushed from another worktree has only
   // the second one here.
