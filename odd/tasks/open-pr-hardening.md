@@ -106,3 +106,14 @@ T1 and T2 are disjoint in files; T2 may travel in its own commit while T1 is bei
   failure this file exists to prevent), item 3 (the adoption contract and the printed messages other tooling
   reads), item 5 (the ritual that opens pull requests) and item 6 (a wait nobody can observe in a unit test).
   High risk, so the native review is due before delivery.
+- **L9.** Native review, lineage `review-d5c34bfe71fac667`, tier `high`, 581 changed lines, lenses
+  risk/resilience/reliability, correction budget 200. Three reviewers and the refuter ran; the refuter
+  admitted one candidate-caused BLOCKER, mine: the new `Path` test in `tests/pack-guard.test.js` fabricated
+  `C:\tools` and split it with the host delimiter, so on POSIX the drive letter's colon split the value and
+  the case would have failed on the platform it was not describing — a green Windows leg is not a green
+  matrix. Corrected in `74efbfe` (10 diff lines against the frozen 200): the directory is built with `join`,
+  which keeps the point and drops the claim the case could not make on Linux. Targeted validator approved it,
+  and the acknowledgement burned the authority (`gentle-ai.review-acknowledged/v1`).
+- **L10.** Six advisory findings stand as later work and do not reopen this candidate: R3-002
+  (`scripts/open-pr.js:220`), R3-003 (`:550`), R3-004 (`scripts/pack-guard.js:139`), R3-005 (SUGGESTION,
+  `scripts/open-pr.js:788-798`), R4-001 (`:648`), R4-002 (`scripts/pack-guard.js:132`).
