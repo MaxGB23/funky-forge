@@ -193,21 +193,31 @@ export function pullRequestFrom(stdout) {
 }
 
 /**
- * The pull request of one head, from `gh pr list --head <head> --json number,url`. `--head` is exact, so
- * several rows are one head in several states; the first row that carries a number and a URL is the one
- * an interrupted ritual left behind.
+ * The pull request of one head, from `gh pr list --head <head> --json number,url,headRefOid`. `--head` is
+ * exact, so several rows are one head in several states, and it matches a branch name alone: a fork pull
+ * request carrying the same name answers here too. What makes a row the pull request an interrupted
+ * ritual left behind is that it sits at the commit under test, so a row at another commit — or at a
+ * commit that cannot be read — is reported apart instead of being adopted.
  *
  * @param {string} stdout
- * @returns {{ url: string, number: number } | null}
+ * @param {string} sha the commit the pull request must be at
+ * @returns {{ pullRequest: { url: string, number: number } | null, elsewhere: { url: string, headRefOid: string|null } | null }}
  */
-export function openPullRequestFrom(stdout) {
+export function openPullRequestFrom(stdout, sha) {
   const rows = parseJson(stdout);
-  if (!Array.isArray(rows)) return null;
+  if (!Array.isArray(rows)) return { pullRequest: null, elsewhere: null };
 
-  const row = rows.find(
+  const usable = rows.filter(
     (entry) => Number.isFinite(Number(entry?.number)) && typeof entry?.url === 'string',
   );
-  return row === undefined ? null : { url: row.url, number: Number(row.number) };
+  const mine = usable.find((entry) => entry?.headRefOid === sha);
+  if (mine !== undefined) {
+    return { pullRequest: { url: mine.url, number: Number(mine.number) }, elsewhere: null };
+  }
+  if (usable.length === 0) return { pullRequest: null, elsewhere: null };
+
+  const at = usable.find((entry) => typeof entry?.headRefOid === 'string' && entry.headRefOid !== '');
+  return { pullRequest: null, elsewhere: { url: usable[0].url, headRefOid: at?.headRefOid ?? null } };
 }
 
 /**
@@ -215,15 +225,16 @@ export function openPullRequestFrom(stdout) {
  * tell": collapsing the two turns a pull request that exists into a duplicate one.
  *
  * @param {(args: string[]) => { ok: boolean, stdout: string, stderr?: string }} gh
- * @param {{ head: string, repo?: string|null }} options
- * @returns {{ pullRequest: { url: string, number: number } | null, problem: string | null }}
+ * @param {{ head: string, repo?: string|null, sha: string }} options
+ * @returns {{ pullRequest: { url: string, number: number } | null, elsewhere: { url: string, headRefOid: string|null } | null, problem: string | null }}
  */
-function listOpenPullRequest(gh, { head, repo = null }) {
-  const listed = gh(withRepo(repo, ['pr', 'list', '--head', head, '--json', 'number,url']));
+function listOpenPullRequest(gh, { head, repo = null, sha }) {
+  const listed = gh(withRepo(repo, ['pr', 'list', '--head', head, '--json', 'number,url,headRefOid']));
   if (listed?.ok !== true) {
     const detail = String(listed?.stderr ?? '').trim().split('\n')[0];
     return {
       pullRequest: null,
+      elsewhere: null,
       problem:
         detail === ''
           ? 'the pull request of this head cannot be read'
@@ -231,7 +242,7 @@ function listOpenPullRequest(gh, { head, repo = null }) {
     };
   }
 
-  return { pullRequest: openPullRequestFrom(listed?.stdout), problem: null };
+  return { ...openPullRequestFrom(listed?.stdout, sha), problem: null };
 }
 
 /**
@@ -470,18 +481,28 @@ export async function run(deps = {}) {
   let pullRequest = pullRequestFrom(created?.stdout);
   let adopted = false;
 
-  if (created?.ok !== true || pullRequest === null) {
+  if (created?.ok !== true) {
     // A creation that failed may have failed because the pull request already exists: an interrupted
     // ritual leaves a real one behind, which is the cost `AGENTS.md` names, and rerunning the command is
     // the recovery the ready creation was designed for. Adoption changes what identifies the run: the
     // creation identifies it by the floor, taken before it fires, while the adopted pull request
     // identifies it by head, because its runs are older than any floor a rerun can take.
-    const open = listOpenPullRequest(gh, { head, repo: options.repo });
+    //
+    // What the row has to prove is the commit, not the wording of the refusal: `--head` matches a branch
+    // name alone, so a fork pull request carrying the same name answers here, and a row at another commit
+    // is not the pull request this rerun is about.
+    const open = listOpenPullRequest(gh, { head, repo: options.repo, sha });
     if (open.pullRequest !== null) {
       pullRequest = open.pullRequest;
       adopted = true;
     } else if (open.problem !== null) {
       err.write(`open-pr: unknown — the creation failed and ${open.problem}, so whether a pull request exists is unknown; check gh pr list --head ${head}\n`);
+      return UNKNOWN;
+    } else if (open.elsewhere !== null) {
+      const where = open.elsewhere.headRefOid === null ? 'a commit that cannot be read' : open.elsewhere.headRefOid;
+      err.write(
+        `open-pr: unknown — the pull request of ${head} is at ${where}, not at ${sha}, so its runs are not a verdict on this commit; nothing was created\n`,
+      );
       return UNKNOWN;
     } else {
       err.write('open-pr: gh pr create failed\n');
@@ -490,6 +511,15 @@ export async function run(deps = {}) {
       }
       return RED;
     }
+  } else if (pullRequest === null) {
+    // A creation that reported success is evidence that a pull request exists, and that its URL cannot be
+    // read is the red it always was. Looking one up by head here would adopt a pull request this
+    // invocation may not have made, and report its runs as the verdict of this commit.
+    err.write('open-pr: gh pr create reported success, but its output carries no pull request\n');
+    for (const chunk of [created?.stdout, created?.stderr]) {
+      if (typeof chunk === 'string' && chunk.trim() !== '') err.write(`${chunk.trim()}\n`);
+    }
+    return RED;
   }
 
   // The adoption is printed because a green that came from an adopted run is only auditable when the

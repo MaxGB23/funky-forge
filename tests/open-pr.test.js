@@ -817,7 +817,7 @@ test('a creation that fails because the pull request exists adopts it and report
   const run1 = { databaseId: 22, headSha: SHA, status: 'completed', conclusion: 'success' };
   const { exec, calls } = gh({
     create: { ok: false, stdout: '', stderr: 'a pull request for branch "feat/open-pr" already exists' },
-    existing: [{ number: 42, url: 'https://github.com/MaxGB23/funky-forge/pull/42' }],
+    existing: [{ number: 42, url: 'https://github.com/MaxGB23/funky-forge/pull/42', headRefOid: SHA }],
     snapshot: [run1],
     runs: [run1],
   });
@@ -839,7 +839,7 @@ test('a creation that fails because the pull request exists adopts it and report
   assert.match(out.text.trimEnd().split('\n').pop(), /pull\/42 {2}· {2}passed/);
   assert.equal(err.text, '', 'an adoption is not a failure');
   const listed = calls.find((call) => call.startsWith('pr list'));
-  assert.match(String(listed), /pr list --head feat\/open-pr --json number,url/, 'the pull request of this head is asked for');
+  assert.match(String(listed), /pr list --head feat\/open-pr --json number,url,headRefOid/, 'the pull request of this head is asked for, with the commit it is at');
   assert.equal(calls.filter((call) => call.startsWith('pr create')).length, 1, 'nothing is created a second time');
 });
 
@@ -905,7 +905,7 @@ test('an adopted pull request with no run is unknown, and names the pull request
   // the answer names the pull request that was adopted, so the reading can be audited.
   const { exec } = gh({
     create: { ok: false, stdout: '', stderr: 'a pull request for branch "feat/open-pr" already exists' },
-    existing: [{ number: 42, url: 'https://github.com/MaxGB23/funky-forge/pull/42' }],
+    existing: [{ number: 42, url: 'https://github.com/MaxGB23/funky-forge/pull/42', headRefOid: SHA }],
     snapshot: [],
     runs: [],
   });
@@ -928,6 +928,67 @@ test('an adopted pull request with no run is unknown, and names the pull request
     /no run of a1b2c3d4e5f60718293a4b5c6d7e8f9012345678 appeared within 30s for the adopted https:\/\/github\.com\/MaxGB23\/funky-forge\/pull\/42, so it has no verdict; this is not a failure/,
     'the adopted pull request is named',
   );
+});
+
+test('a creation that succeeded with an unreadable URL is red, and nothing is adopted', async (t) => {
+  const out = capture();
+  const err = capture();
+  // A creation that reported success is evidence that a pull request exists, and the red is that its URL
+  // cannot be read. Looking one up by head would adopt a pull request this invocation may not have made,
+  // so a succeeded creation never enters the adoption branch.
+  const { exec, calls } = gh({
+    create: { ok: true, stdout: 'nothing here that looks like a pull request', stderr: '' },
+    existing: [{ number: 42, url: 'https://github.com/MaxGB23/funky-forge/pull/42', headRefOid: SHA }],
+  });
+
+  const code = await run({
+    argv: argvFor(bodyFile(t, BODY)),
+    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
+    pack: packGuard(PACK_GREEN),
+    exec,
+    resolveSha: () => SHA,
+    sleep: async () => {},
+    out,
+    err,
+  });
+
+  assert.equal(code, RED, 'a creation that succeeded and cannot be named is the red it always was');
+  assert.match(err.text, /^open-pr: gh pr create reported success, but its output carries no pull request$/m);
+  assert.equal(calls.filter((call) => call.startsWith('pr list')).length, 0, 'nothing is adopted on a creation that succeeded');
+  assert.doesNotMatch(out.text, /adopted/);
+});
+
+test('a pull request of this head at another commit is not adopted', async (t) => {
+  const out = capture();
+  const err = capture();
+  // The row exists and carries this head branch name, which is all a refusal from `gh` proves. It sits at
+  // another commit — a fork pull request, or a branch that moved — so its runs are not a verdict on the
+  // commit in front of us, and nothing in the answer can tell the two apart. Refuse, do not guess.
+  const other = 'ffffffffffffffffffffffffffffffffffffffff';
+  const { exec, calls } = gh({
+    create: { ok: false, stdout: '', stderr: 'a pull request for branch "feat/open-pr" already exists' },
+    existing: [{ number: 7, url: 'https://github.com/MaxGB23/funky-forge/pull/7', headRefOid: other }],
+  });
+
+  const code = await run({
+    argv: argvFor(bodyFile(t, BODY)),
+    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
+    pack: packGuard(PACK_GREEN),
+    exec,
+    resolveSha: () => SHA,
+    sleep: async () => {},
+    out,
+    err,
+  });
+
+  assert.equal(code, UNKNOWN, 'a row at another commit is a question, and 2 never means failure');
+  assert.match(
+    err.text,
+    /the pull request of feat\/open-pr is at ffffffffffffffffffffffffffffffffffffffff, not at a1b2c3d4e5f60718293a4b5c6d7e8f9012345678, so its runs are not a verdict on this commit/,
+    'both commits are named, because the reading has to be auditable',
+  );
+  assert.equal(calls.filter((call) => call.startsWith('run view')).length, 0, 'no verdict is read from another commit');
+  assert.doesNotMatch(out.text, /adopted/);
 });
 
 test('a suite or a packed set that does not answer is unknown, never red', async (t) => {
