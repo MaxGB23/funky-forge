@@ -380,15 +380,18 @@ export async function run(deps = {}) {
     return UNKNOWN;
   }
 
-  // One deadline, taken before the first child, because the declared timeout is the budget of the whole
-  // ritual and not of each step in it. Before this, the floor read, the creation and the wait each took
-  // the full number and every `run view` inside the wait took it again, so a declared ten minutes could
-  // hold the ritual open for forty. A child that stalls holds the ritual open exactly as a watch does,
-  // and a stalled child does not fail: it hangs.
+  // One deadline, taken before the first child of all — the suite included, because a step outside the
+  // budget makes `--timeout` a promise about one phase instead of about the turn. Before this the floor
+  // read, the creation and the wait each took the full number and every `run view` inside the wait took
+  // it again, so a declared ten minutes could hold the ritual open for forty. A child that stalls holds
+  // the ritual open exactly as a watch does, and a stalled child does not fail: it hangs.
   let deadline = null;
   const budget = () => (deadline ??= now() + options.timeout * 1000);
   const remainingMs = () => Math.max(1000, budget() - now());
   const remainingSeconds = () => Math.max(1, Math.round((budget() - now()) / 1000));
+  // A step keeps its own ceiling while there is room for it and is cut to what is left when there is
+  // not: the ceiling says what the step may take, the budget says what the turn may.
+  const ceiling = (own) => Math.min(own, remainingMs());
   // What the last child was actually handed, so a ceiling that was reached is named as it was given and
   // not as the declared number.
   let lastCeilingMs = 1000;
@@ -399,8 +402,9 @@ export async function run(deps = {}) {
 
   // 1. The suite. A branch that does not parse is cheaper to fix here than in a run nobody watches. A
   // child killed at its ceiling did not fail; it did not answer.
-  const tested = suite();
-  if (tested?.timedOut === true) return unanswered(out, 'the suite', `its ceiling of ${SUITE_TIMEOUT_MS / 1000}s`, 'nothing was created and its verdict is unknown');
+  const suiteCeilingMs = ceiling(SUITE_TIMEOUT_MS);
+  const tested = suite({ timeoutMs: suiteCeilingMs });
+  if (tested?.timedOut === true) return unanswered(out, 'the suite', `its ceiling of ${Math.round(suiteCeilingMs / 1000)}s`, 'nothing was created and its verdict is unknown');
   if (!tested.ok) {
     const count = failingCount(tested.stdout);
     const named = count === null ? '' : ` (${count} failing test${count === 1 ? '' : 's'})`;
@@ -414,8 +418,9 @@ export async function run(deps = {}) {
   // publish a tarball that leaks a file or misses one the `files` contract promised, and that one is
   // found after publication if it is found at all. The gate names itself and its own command: a
   // refusal that reuses another step's words cannot be told apart from that step's.
-  const packed = pack();
-  if (packed?.timedOut === true) return unanswered(out, `the packed-set gate (${PACK_SCRIPT})`, `its ceiling of ${PACK_TIMEOUT_MS / 1000}s`, 'nothing was created and its verdict is unknown');
+  const packCeilingMs = ceiling(PACK_TIMEOUT_MS);
+  const packed = pack({ timeoutMs: packCeilingMs });
+  if (packed?.timedOut === true) return unanswered(out, `the packed-set gate (${PACK_SCRIPT})`, `its ceiling of ${Math.round(packCeilingMs / 1000)}s`, 'nothing was created and its verdict is unknown');
   if (packed !== null && packed.ok !== true) {
     err.write(`open-pr: refusing: the packed-set gate (${PACK_SCRIPT}) is red, so nothing was created\n`);
     // The gate's own words, because "the packed set is not the files contract" means nothing without
@@ -721,12 +726,12 @@ const SUITE_TIMEOUT_MS = 900_000;
  *
  * @returns {{ cwd: string, encoding: 'utf8', maxBuffer: number, timeout: number }}
  */
-export function suiteOptions() {
-  return { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: SUITE_TIMEOUT_MS };
+export function suiteOptions(timeoutMs = SUITE_TIMEOUT_MS) {
+  return { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: timeoutMs };
 }
 
-function defaultSuite() {
-  const result = spawnSync(process.execPath, ['--test'], suiteOptions());
+function defaultSuite({ timeoutMs = SUITE_TIMEOUT_MS } = {}) {
+  const result = spawnSync(process.execPath, ['--test'], suiteOptions(timeoutMs));
   // A kill leaves no status: the ceiling was reached, which is not a failing test.
   const timedOut = result.status === null;
   return { ok: result.status === 0, timedOut, stdout: `${result.stdout ?? ''}${result.stderr ?? ''}` };
@@ -743,8 +748,8 @@ const PACK_TIMEOUT_MS = 120_000;
  *
  * @returns {{ cwd: string, encoding: 'utf8', maxBuffer: number, timeout: number }}
  */
-export function packOptions() {
-  return { cwd: ROOT, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: PACK_TIMEOUT_MS };
+export function packOptions(timeoutMs = PACK_TIMEOUT_MS) {
+  return { cwd: ROOT, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: timeoutMs };
 }
 
 /**
@@ -753,10 +758,10 @@ export function packOptions() {
  *
  * @returns {{ ok: boolean, stdout: string } | null}
  */
-function defaultPack() {
+function defaultPack({ timeoutMs = PACK_TIMEOUT_MS } = {}) {
   if (!existsSync(join(ROOT, PACK_SCRIPT))) return null;
 
-  const result = spawnSync(process.execPath, [PACK_SCRIPT], packOptions());
+  const result = spawnSync(process.execPath, [PACK_SCRIPT], packOptions(timeoutMs));
   const timedOut = result.status === null;
   return { ok: result.status === 0, timedOut, stdout: `${result.stdout ?? ''}${result.stderr ?? ''}` };
 }

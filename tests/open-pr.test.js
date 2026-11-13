@@ -597,6 +597,37 @@ test('a watch that runs out of time is unknown, never a failure', async (t) => {
   assert.match(out.text, /unknown — the run did not conclude within 30s; this is not a failure/);
 });
 
+test('the suite is bounded by the delivery budget, not only by its own ceiling', async (t) => {
+  // `--timeout` names the budget of the delivery, and a step that runs before it cannot spend more than
+  // the whole. The suite's own ceiling is 900s and the default budget is 600s, so the smaller number has
+  // to reach the child; and the delivery inherits what the suite left, not the declared number.
+  let clock = 0;
+  const suiteCeilings = [];
+  const execCeilings = [];
+  const { exec: answered } = gh({
+    snapshot: [],
+    runs: [{ databaseId: 22, headSha: SHA, status: 'in_progress', conclusion: null }],
+    watch: { ok: false, timedOut: true },
+  });
+  const exec = (args, options) => {
+    execCeilings.push(options.timeoutMs);
+    return answered(args, options);
+  };
+  const { deps } = frontHalf(t, {
+    exec,
+    now: () => clock,
+    suite: ({ timeoutMs }) => {
+      suiteCeilings.push(timeoutMs);
+      clock += 10_000;
+      return { ok: true, stdout: 'ℹ fail 0\n' };
+    },
+  });
+
+  assert.equal(await run(deps), UNKNOWN, 'a watch that ran out is not a failure');
+  assert.equal(suiteCeilings[0], 30_000, 'the suite is bounded by the budget when the budget is smaller');
+  assert.equal(execCeilings[0], 20_000, 'the delivery inherits what the suite left');
+});
+
 test('the wait reports the seconds it was given, not the ones the command declared', async (t) => {
   // The line a human reads before waiting has to be the number the wait actually got. With nothing
   // spent, that number and the declared one are the same, and a message printing the wrong one passes
@@ -1182,12 +1213,12 @@ test('a suite or a packed set that does not answer is unknown, never red', async
   const { exec, calls } = gh();
   const untested = frontHalf(t, { exec, suite: () => ({ ok: false, timedOut: true, stdout: 'ℹ fail 1\n' }) });
   assert.equal(await run(untested.deps), UNKNOWN, 'a suite killed at its ceiling did not fail');
-  assert.match(untested.out.text, /the suite did not answer within its ceiling of 900s/);
+  assert.match(untested.out.text, /the suite did not answer within its ceiling of 30s/);
   assert.equal(calls.length, 0, 'nothing is created on an answer nobody gave');
 
   const unpacked = frontHalf(t, { exec, pack: () => ({ ok: false, timedOut: true, stdout: 'pack-guard: still packing\n' }) });
   assert.equal(await run(unpacked.deps), UNKNOWN, 'a packed set killed at its ceiling did not fail');
-  assert.match(unpacked.out.text, /did not answer within its ceiling of 120s/);
+  assert.match(unpacked.out.text, /did not answer within its ceiling of 30s/);
   assert.equal(calls.length, 0, 'still nothing is created');
 });
 
