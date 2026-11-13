@@ -264,6 +264,7 @@ test('a red packed-set gate refuses before anything is created and names the gat
     pack: packGuard({ ok: false, stdout: 'pack-guard: bin/funky-forge.js is not covered by files\n' }),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -301,6 +302,7 @@ test('the packed-set gate is skipped when the repository has no guard to run', a
     },
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -350,6 +352,7 @@ test('creates the pull request ready and returns the run of this commit', async 
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -427,6 +430,7 @@ test('the run of this event decides once its id is past the floor', async (t) =>
     pack: packGuard(PACK_GREEN),
     exec: greenGh.exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out: greenOut,
     err: greenErr,
@@ -452,6 +456,7 @@ test('the run of this event decides once its id is past the floor', async (t) =>
     pack: packGuard(PACK_GREEN),
     exec: redGh.exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out: redOut,
     err: redErr,
@@ -495,6 +500,7 @@ test('a floor that cannot be read refuses before anything is created, so nothing
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -545,6 +551,7 @@ test('a run of this commit that existed before the creation stays behind the flo
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -570,6 +577,7 @@ test('a watch that runs out of time is unknown, never a failure', async (t) => {
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -605,6 +613,7 @@ test('a run that concluded failure exits 1 and still names the pull request', as
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -634,6 +643,7 @@ test('a cancelled run with a green matrix is unknown, never a failure', async (t
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -704,6 +714,7 @@ test('every gh call is bounded, not only the watch', async (t) => {
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -712,9 +723,21 @@ test('every gh call is bounded, not only the watch', async (t) => {
   assert.equal(code, GREEN, err.text);
   assert.ok(seen.length >= 4, `create, list, ready, watch and view all go through one child: ${seen.length}`);
   for (const options of seen) {
-    // `argvFor` asks for `--timeout 30`, so the ceiling of every child is 30 s, not only the watch's.
-    assert.equal(options?.timeoutMs, 30_000, 'the wait budget is the ceiling of every child');
+    // `argvFor` asks for `--timeout 30`, so no child may go past 30 s and none may be handed nothing: the
+    // number is one budget spent down, not a per-call allowance repeated.
+    assert.ok(
+      Number.isFinite(options?.timeoutMs) && options.timeoutMs <= 30_000 && options.timeoutMs >= 1_000,
+      `every child is bounded by the one budget: ${JSON.stringify(options)}`,
+    );
   }
+  // The deadline is taken from a real clock and the milliseconds already spent are subtracted, so the first
+  // child is handed the whole budget minus however long the steps before it really took. Demanding exactly
+  // 30 000 turned a machine that was a millisecond slower into a red matrix — the number is the budget, not
+  // a constant, and the fake-clock cases above are the ones that pin it exactly.
+  assert.ok(
+    seen[0]?.timeoutMs <= 30_000 && seen[0]?.timeoutMs > 29_000,
+    `the first child is handed the whole of it, minus what was already spent: ${seen[0]?.timeoutMs}`,
+  );
 });
 
 test('a commit that cannot be resolved refuses and creates nothing', async (t) => {
@@ -747,6 +770,7 @@ function frontHalf(t, overrides) {
     suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
     pack: packGuard(PACK_GREEN),
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -817,7 +841,7 @@ test('a creation that fails because the pull request exists adopts it and report
   const run1 = { databaseId: 22, headSha: SHA, status: 'completed', conclusion: 'success' };
   const { exec, calls } = gh({
     create: { ok: false, stdout: '', stderr: 'a pull request for branch "feat/open-pr" already exists' },
-    existing: [{ number: 42, url: 'https://github.com/MaxGB23/funky-forge/pull/42' }],
+    existing: [{ number: 42, url: 'https://github.com/MaxGB23/funky-forge/pull/42', headRefOid: SHA }],
     snapshot: [run1],
     runs: [run1],
   });
@@ -828,6 +852,7 @@ test('a creation that fails because the pull request exists adopts it and report
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -839,7 +864,7 @@ test('a creation that fails because the pull request exists adopts it and report
   assert.match(out.text.trimEnd().split('\n').pop(), /pull\/42 {2}· {2}passed/);
   assert.equal(err.text, '', 'an adoption is not a failure');
   const listed = calls.find((call) => call.startsWith('pr list'));
-  assert.match(String(listed), /pr list --head feat\/open-pr --json number,url/, 'the pull request of this head is asked for');
+  assert.match(String(listed), /pr list --head feat\/open-pr --json number,url,headRefOid/, 'the pull request of this head is asked for, with the commit it is at');
   assert.equal(calls.filter((call) => call.startsWith('pr create')).length, 1, 'nothing is created a second time');
 });
 
@@ -857,6 +882,7 @@ test('a creation that fails with no pull request for the head is red, naming wha
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -885,6 +911,7 @@ test('a creation that fails while the head cannot be read is unknown, never red'
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -905,7 +932,7 @@ test('an adopted pull request with no run is unknown, and names the pull request
   // the answer names the pull request that was adopted, so the reading can be audited.
   const { exec } = gh({
     create: { ok: false, stdout: '', stderr: 'a pull request for branch "feat/open-pr" already exists' },
-    existing: [{ number: 42, url: 'https://github.com/MaxGB23/funky-forge/pull/42' }],
+    existing: [{ number: 42, url: 'https://github.com/MaxGB23/funky-forge/pull/42', headRefOid: SHA }],
     snapshot: [],
     runs: [],
   });
@@ -916,6 +943,7 @@ test('an adopted pull request with no run is unknown, and names the pull request
     pack: packGuard(PACK_GREEN),
     exec,
     resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
     sleep: async () => {},
     out,
     err,
@@ -928,6 +956,171 @@ test('an adopted pull request with no run is unknown, and names the pull request
     /no run of a1b2c3d4e5f60718293a4b5c6d7e8f9012345678 appeared within 30s for the adopted https:\/\/github\.com\/MaxGB23\/funky-forge\/pull\/42, so it has no verdict; this is not a failure/,
     'the adopted pull request is named',
   );
+});
+
+test('a creation that succeeded with an unreadable URL is red, and nothing is adopted', async (t) => {
+  const out = capture();
+  const err = capture();
+  // A creation that reported success is evidence that a pull request exists, and the red is that its URL
+  // cannot be read. Looking one up by head would adopt a pull request this invocation may not have made,
+  // so a succeeded creation never enters the adoption branch.
+  const { exec, calls } = gh({
+    create: { ok: true, stdout: 'nothing here that looks like a pull request', stderr: '' },
+    existing: [{ number: 42, url: 'https://github.com/MaxGB23/funky-forge/pull/42', headRefOid: SHA }],
+  });
+
+  const code = await run({
+    argv: argvFor(bodyFile(t, BODY)),
+    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
+    pack: packGuard(PACK_GREEN),
+    exec,
+    resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
+    sleep: async () => {},
+    out,
+    err,
+  });
+
+  assert.equal(code, RED, 'a creation that succeeded and cannot be named is the red it always was');
+  assert.match(err.text, /^open-pr: gh pr create reported success, but its output carries no pull request$/m);
+  assert.equal(calls.filter((call) => call.startsWith('pr list')).length, 0, 'nothing is adopted on a creation that succeeded');
+  assert.doesNotMatch(out.text, /adopted/);
+});
+
+test('a pull request of this head at another commit is not adopted', async (t) => {
+  const out = capture();
+  const err = capture();
+  // The row exists and carries this head branch name, which is all a refusal from `gh` proves. It sits at
+  // another commit — a fork pull request, or a branch that moved — so its runs are not a verdict on the
+  // commit in front of us, and nothing in the answer can tell the two apart. Refuse, do not guess.
+  const other = 'ffffffffffffffffffffffffffffffffffffffff';
+  const { exec, calls } = gh({
+    create: { ok: false, stdout: '', stderr: 'a pull request for branch "feat/open-pr" already exists' },
+    existing: [{ number: 7, url: 'https://github.com/MaxGB23/funky-forge/pull/7', headRefOid: other }],
+  });
+
+  const code = await run({
+    argv: argvFor(bodyFile(t, BODY)),
+    suite: () => ({ ok: true, stdout: 'ℹ fail 0\n' }),
+    pack: packGuard(PACK_GREEN),
+    exec,
+    resolveSha: () => SHA,
+    remoteSha: () => ({ ok: true, sha: SHA }),
+    sleep: async () => {},
+    out,
+    err,
+  });
+
+  assert.equal(code, UNKNOWN, 'a row at another commit is a question, and 2 never means failure');
+  assert.match(
+    err.text,
+    /the pull request of feat\/open-pr is at ffffffffffffffffffffffffffffffffffffffff, not at a1b2c3d4e5f60718293a4b5c6d7e8f9012345678, so its runs are not a verdict on this commit/,
+    'both commits are named, because the reading has to be auditable',
+  );
+  assert.equal(calls.filter((call) => call.startsWith('run view')).length, 0, 'no verdict is read from another commit');
+  assert.doesNotMatch(out.text, /adopted/);
+});
+
+test('a remote branch at another commit is refused, naming both', async (t) => {
+  // The wait looks for a run of the commit in front of you, and a run belongs to the commit origin has. If
+  // the branch was pushed from somewhere else, the run this command wants can never appear here, and the
+  // honest answer is a refusal that names both commits — not ten minutes spent and a reason that cannot
+  // be acted on.
+  const other = 'f'.repeat(40);
+  const { exec, calls } = gh();
+  const { out, err, deps } = frontHalf(t, { exec, remoteSha: () => ({ ok: true, sha: other }) });
+
+  assert.equal(await run(deps), UNKNOWN, 'a branch that is not this commit is a refusal, and 2 never means failure');
+  assert.match(err.text, /^open-pr: refusing: origin\/feat\/open-pr is at f{40}, not at a1b2c3d4e5f60718293a4b5c6d7e8f9012345678, so the run of this commit could never appear here; nothing was created$/m);
+  assert.equal(calls.filter((call) => call.startsWith('pr create')).length, 0, 'nothing is created on a branch the remote does not have');
+  assert.doesNotMatch(out.text, /waiting for the runs/, 'and nothing is waited on either');
+});
+
+test('a remote nobody can read is refused, never assumed equal', async (t) => {
+  // A read that did not answer is evidence of nothing. Treating it as agreement would wait on the wrong
+  // commit silently; treating it as a difference would accuse a branch nobody looked at. Refuse.
+  const { exec, calls } = gh();
+  const { err, deps } = frontHalf(t, { exec, remoteSha: () => ({ ok: false, sha: '' }) });
+
+  assert.equal(await run(deps), UNKNOWN);
+  assert.match(
+    err.text,
+    /^open-pr: refusing: the commit of origin\/feat\/open-pr cannot be read, so whether this branch is the commit in front of you is unknown; nothing was created$/m,
+  );
+  assert.equal(calls.filter((call) => call.startsWith('pr create')).length, 0);
+});
+
+test('a head the remote does not have is refused, and says so plainly', async (t) => {
+  const { exec } = gh();
+  const { err, deps } = frontHalf(t, { exec, remoteSha: () => ({ ok: true, sha: '' }) });
+
+  assert.equal(await run(deps), UNKNOWN);
+  assert.match(
+    err.text,
+    /^open-pr: refusing: origin has no branch feat\/open-pr, so there is no commit to wait on; nothing was created$/m,
+  );
+});
+
+test('every gh child spends what is left of one budget, never the whole of it again', async (t) => {
+  // Before: the floor read, the creation and the wait each took the declared number, and every `run view`
+  // inside the wait took it again — a declared ten minutes that could hold the ritual open for forty. One
+  // deadline is taken before the first child, and each child is handed what is left of it.
+  const costs = [];
+  let clock = 0;
+  const run1 = { databaseId: 22, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const inner = gh({ snapshot: [], runs: [run1] });
+  const exec = (args, options) => {
+    costs.push(options?.timeoutMs);
+    clock += 4000;
+    return inner.exec(args, options);
+  };
+  const { deps } = frontHalf(t, { exec, now: () => clock });
+
+  assert.equal(await run(deps), GREEN);
+  assert.ok(costs.length >= 5, `the whole ritual has to be measured, and ${costs.length} children were seen`);
+  assert.equal(costs[0], 30000, 'the first child is handed the whole declared budget');
+  assert.deepEqual(
+    costs,
+    costs.map((_, index) => Math.max(1000, 30000 - 4000 * index)),
+    'each child is handed what is left of one deadline, not the declared number again',
+  );
+});
+
+test('a child is never handed less than a second, whatever the clock says', async (t) => {
+  // A zero timeout kills a child before it runs and reports a ceiling that was never reached, which reads
+  // as a step that did not answer. The floor keeps the last child a real attempt.
+  const costs = [];
+  let clock = 0;
+  const run1 = { databaseId: 22, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const inner = gh({ snapshot: [], runs: [run1] });
+  const exec = (args, options) => {
+    costs.push(options?.timeoutMs);
+    clock += 60000;
+    return inner.exec(args, options);
+  };
+  const { deps } = frontHalf(t, { exec, now: () => clock });
+
+  assert.equal(await run(deps), GREEN);
+  assert.equal(costs[0], 30000);
+  assert.equal(costs[1], 1000, 'the deadline passed, and the next child is still given one second rather than none');
+  assert.ok(costs.slice(1).every((cost) => cost === 1000), `after the deadline every child gets the floor: ${costs}`);
+});
+
+test('the wait is told the seconds that are left, and prints them', async (t) => {
+  // The line a human reads before waiting has to be the number the wait actually got, or the declared
+  // budget and the observed one disagree in the output that is supposed to explain the difference.
+  let clock = 0;
+  const run1 = { databaseId: 22, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const inner = gh({ snapshot: [], runs: [run1] });
+  const exec = (args, options) => {
+    clock += 4000;
+    return inner.exec(args, options);
+  };
+  const { out, deps } = frontHalf(t, { exec, now: () => clock });
+
+  assert.equal(await run(deps), GREEN);
+  // Two children before the wait — the floor and the creation — so eight seconds are spent.
+  assert.match(out.text, new RegExp(`waiting for the runs of ${SHA} \\(up to 22s\\)`));
 });
 
 test('a suite or a packed set that does not answer is unknown, never red', async (t) => {

@@ -193,21 +193,31 @@ export function pullRequestFrom(stdout) {
 }
 
 /**
- * The pull request of one head, from `gh pr list --head <head> --json number,url`. `--head` is exact, so
- * several rows are one head in several states; the first row that carries a number and a URL is the one
- * an interrupted ritual left behind.
+ * The pull request of one head, from `gh pr list --head <head> --json number,url,headRefOid`. `--head` is
+ * exact, so several rows are one head in several states, and it matches a branch name alone: a fork pull
+ * request carrying the same name answers here too. What makes a row the pull request an interrupted
+ * ritual left behind is that it sits at the commit under test, so a row at another commit — or at a
+ * commit that cannot be read — is reported apart instead of being adopted.
  *
  * @param {string} stdout
- * @returns {{ url: string, number: number } | null}
+ * @param {string} sha the commit the pull request must be at
+ * @returns {{ pullRequest: { url: string, number: number } | null, elsewhere: { url: string, headRefOid: string|null } | null }}
  */
-export function openPullRequestFrom(stdout) {
+export function openPullRequestFrom(stdout, sha) {
   const rows = parseJson(stdout);
-  if (!Array.isArray(rows)) return null;
+  if (!Array.isArray(rows)) return { pullRequest: null, elsewhere: null };
 
-  const row = rows.find(
+  const usable = rows.filter(
     (entry) => Number.isFinite(Number(entry?.number)) && typeof entry?.url === 'string',
   );
-  return row === undefined ? null : { url: row.url, number: Number(row.number) };
+  const mine = usable.find((entry) => entry?.headRefOid === sha);
+  if (mine !== undefined) {
+    return { pullRequest: { url: mine.url, number: Number(mine.number) }, elsewhere: null };
+  }
+  if (usable.length === 0) return { pullRequest: null, elsewhere: null };
+
+  const at = usable.find((entry) => typeof entry?.headRefOid === 'string' && entry.headRefOid !== '');
+  return { pullRequest: null, elsewhere: { url: usable[0].url, headRefOid: at?.headRefOid ?? null } };
 }
 
 /**
@@ -215,15 +225,16 @@ export function openPullRequestFrom(stdout) {
  * tell": collapsing the two turns a pull request that exists into a duplicate one.
  *
  * @param {(args: string[]) => { ok: boolean, stdout: string, stderr?: string }} gh
- * @param {{ head: string, repo?: string|null }} options
- * @returns {{ pullRequest: { url: string, number: number } | null, problem: string | null }}
+ * @param {{ head: string, repo?: string|null, sha: string }} options
+ * @returns {{ pullRequest: { url: string, number: number } | null, elsewhere: { url: string, headRefOid: string|null } | null, problem: string | null }}
  */
-function listOpenPullRequest(gh, { head, repo = null }) {
-  const listed = gh(withRepo(repo, ['pr', 'list', '--head', head, '--json', 'number,url']));
+function listOpenPullRequest(gh, { head, repo = null, sha }) {
+  const listed = gh(withRepo(repo, ['pr', 'list', '--head', head, '--json', 'number,url,headRefOid']));
   if (listed?.ok !== true) {
     const detail = String(listed?.stderr ?? '').trim().split('\n')[0];
     return {
       pullRequest: null,
+      elsewhere: null,
       problem:
         detail === ''
           ? 'the pull request of this head cannot be read'
@@ -231,7 +242,7 @@ function listOpenPullRequest(gh, { head, repo = null }) {
     };
   }
 
-  return { pullRequest: openPullRequestFrom(listed?.stdout), problem: null };
+  return { ...openPullRequestFrom(listed?.stdout, sha), problem: null };
 }
 
 /**
@@ -271,6 +282,7 @@ export async function findRun({
   sleep,
   timeoutSeconds = DEFAULT_TIMEOUT_SECONDS,
   intervalSeconds = DEFAULT_INTERVAL_SECONDS,
+  remainingMs = null,
 }) {
   const interval = Math.max(1, intervalSeconds);
   const attempts = Math.max(0, Math.ceil(Math.max(1, timeoutSeconds) / interval));
@@ -278,9 +290,14 @@ export async function findRun({
   // What the wait has spent, so a poll is bounded by what is left of the budget, not by the whole of it.
   const started = Date.now();
   const spent = () => Math.min(timeoutSeconds, (Date.now() - started) / 1000);
+  // One deadline belongs to the whole ritual, so a poll that stalls cannot spend again what an earlier
+  // child already spent: when the caller owns that deadline, its remaining milliseconds bound the poll.
+  const pollBudgetMs = () =>
+    typeof remainingMs === 'function'
+      ? remainingMs()
+      : Math.max(1, Math.ceil(timeoutSeconds - spent())) * 1000;
   const poll = () => {
-    const remaining = Math.max(1, Math.ceil(timeoutSeconds - spent()));
-    const { runs, timedOut } = listRuns(exec, { head, repo, timeoutMs: remaining * 1000 });
+    const { runs, timedOut } = listRuns(exec, { head, repo, timeoutMs: pollBudgetMs() });
     return { candidates: runs === null ? [] : runsPastFloor(runs, sha, floor), timedOut };
   };
   const done = (fields) =>
@@ -326,7 +343,7 @@ function unanswered(stream, step, ceiling, left) {
 /**
  * The command line, and the ritual it refuses to skip.
  *
- * @param {{ argv?: string[], exec?: Function, suite?: () => { ok: boolean, stdout: string }, pack?: () => { ok: boolean, stdout: string } | null, resolveHead?: () => string, resolveSha?: () => string, sleep?: (ms: number) => Promise<void>, out?: { write: Function }, err?: { write: Function } }} [deps]
+ * @param {{ argv?: string[], exec?: Function, suite?: () => { ok: boolean, stdout: string }, pack?: () => { ok: boolean, stdout: string } | null, resolveHead?: () => string, resolveSha?: () => string, remoteSha?: (head: string, options?: { timeoutMs?: number }) => { ok: boolean, sha: string }, now?: () => number, sleep?: (ms: number) => Promise<void>, out?: { write: Function }, err?: { write: Function } }} [deps]
  * @returns {Promise<number>}
  */
 export async function run(deps = {}) {
@@ -338,6 +355,8 @@ export async function run(deps = {}) {
   const pack = deps.pack ?? defaultPack;
   const resolveHead = deps.resolveHead ?? defaultResolveHead;
   const resolveSha = deps.resolveSha ?? defaultResolveSha;
+  const remoteSha = deps.remoteSha ?? defaultRemoteSha;
+  const now = deps.now ?? (() => Date.now());
   const sleep = deps.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
 
   const { options, problems, help } = parseArgs(argv);
@@ -361,9 +380,22 @@ export async function run(deps = {}) {
     return UNKNOWN;
   }
 
-  // Every `gh` call is bounded by the wait budget, not only the watch. A create or a list that stalls
-  // holds the ritual open exactly as a watch does, and a stalled child does not fail: it hangs.
-  const gh = (args) => exec(args, { timeoutMs: options.timeout * 1000 });
+  // One deadline, taken before the first child, because the declared timeout is the budget of the whole
+  // ritual and not of each step in it. Before this, the floor read, the creation and the wait each took
+  // the full number and every `run view` inside the wait took it again, so a declared ten minutes could
+  // hold the ritual open for forty. A child that stalls holds the ritual open exactly as a watch does,
+  // and a stalled child does not fail: it hangs.
+  let deadline = null;
+  const budget = () => (deadline ??= now() + options.timeout * 1000);
+  const remainingMs = () => Math.max(1000, budget() - now());
+  const remainingSeconds = () => Math.max(1, Math.round((budget() - now()) / 1000));
+  // What the last child was actually handed, so a ceiling that was reached is named as it was given and
+  // not as the declared number.
+  let lastCeilingMs = 1000;
+  const gh = (args) => {
+    lastCeilingMs = remainingMs();
+    return exec(args, { timeoutMs: lastCeilingMs });
+  };
 
   // 1. The suite. A branch that does not parse is cheaper to fix here than in a run nobody watches. A
   // child killed at its ceiling did not fail; it did not answer.
@@ -424,6 +456,31 @@ export async function run(deps = {}) {
     return UNKNOWN;
   }
 
+  // The commit of the branch on origin, before anything is created. The wait looks for a run of the
+  // commit in front of you, and a run belongs to the commit origin has: when the branch was pushed from
+  // elsewhere, or the remote cannot be read, the run this command wants can never be matched, and the
+  // measured cost of finding out through the wait was 10m 50s and a `2` whose reason was true and
+  // useless. Both commits are named, because the reading is the action.
+  const remote = remoteSha(head, { timeoutMs: remainingMs() });
+  if (remote?.ok !== true) {
+    err.write(
+      `open-pr: refusing: the commit of origin/${head} cannot be read, so whether this branch is the commit in front of you is unknown; nothing was created\n`,
+    );
+    return UNKNOWN;
+  }
+  if (typeof remote.sha !== 'string' || remote.sha === '') {
+    err.write(
+      `open-pr: refusing: origin has no branch ${head}, so there is no commit to wait on; nothing was created\n`,
+    );
+    return UNKNOWN;
+  }
+  if (remote.sha !== sha) {
+    err.write(
+      `open-pr: refusing: origin/${head} is at ${remote.sha}, not at ${sha}, so the run of this commit could never appear here; nothing was created\n`,
+    );
+    return UNKNOWN;
+  }
+
   // The floor, read before anything is created. This is the read that makes the run identifiable:
   // `databaseId` is global and monotone by creation, so the run of the single event this command fires
   // has a greater id than anything that existed when the floor was taken, whether or not the API has
@@ -465,23 +522,33 @@ export async function run(deps = {}) {
 
   // The creation may have happened and nobody answered whether it did: a guess either duplicates the
   // pull request or claims a failure that may not exist.
-  if (created?.timedOut === true) return unanswered(out, 'gh pr create', `its ceiling of ${options.timeout}s`, `whether a pull request was created cannot be told: check gh pr list --head ${head} before rerunning`);
+  if (created?.timedOut === true) return unanswered(out, 'gh pr create', `its ceiling of ${Math.round(lastCeilingMs / 1000)}s`, `whether a pull request was created cannot be told: check gh pr list --head ${head} before rerunning`);
 
   let pullRequest = pullRequestFrom(created?.stdout);
   let adopted = false;
 
-  if (created?.ok !== true || pullRequest === null) {
+  if (created?.ok !== true) {
     // A creation that failed may have failed because the pull request already exists: an interrupted
     // ritual leaves a real one behind, which is the cost `AGENTS.md` names, and rerunning the command is
     // the recovery the ready creation was designed for. Adoption changes what identifies the run: the
     // creation identifies it by the floor, taken before it fires, while the adopted pull request
     // identifies it by head, because its runs are older than any floor a rerun can take.
-    const open = listOpenPullRequest(gh, { head, repo: options.repo });
+    //
+    // What the row has to prove is the commit, not the wording of the refusal: `--head` matches a branch
+    // name alone, so a fork pull request carrying the same name answers here, and a row at another commit
+    // is not the pull request this rerun is about.
+    const open = listOpenPullRequest(gh, { head, repo: options.repo, sha });
     if (open.pullRequest !== null) {
       pullRequest = open.pullRequest;
       adopted = true;
     } else if (open.problem !== null) {
       err.write(`open-pr: unknown — the creation failed and ${open.problem}, so whether a pull request exists is unknown; check gh pr list --head ${head}\n`);
+      return UNKNOWN;
+    } else if (open.elsewhere !== null) {
+      const where = open.elsewhere.headRefOid === null ? 'a commit that cannot be read' : open.elsewhere.headRefOid;
+      err.write(
+        `open-pr: unknown — the pull request of ${head} is at ${where}, not at ${sha}, so its runs are not a verdict on this commit; nothing was created\n`,
+      );
       return UNKNOWN;
     } else {
       err.write('open-pr: gh pr create failed\n');
@@ -490,6 +557,15 @@ export async function run(deps = {}) {
       }
       return RED;
     }
+  } else if (pullRequest === null) {
+    // A creation that reported success is evidence that a pull request exists, and that its URL cannot be
+    // read is the red it always was. Looking one up by head here would adopt a pull request this
+    // invocation may not have made, and report its runs as the verdict of this commit.
+    err.write('open-pr: gh pr create reported success, but its output carries no pull request\n');
+    for (const chunk of [created?.stdout, created?.stderr]) {
+      if (typeof chunk === 'string' && chunk.trim() !== '') err.write(`${chunk.trim()}\n`);
+    }
+    return RED;
   }
 
   // The adoption is printed because a green that came from an adopted run is only auditable when the
@@ -502,8 +578,9 @@ export async function run(deps = {}) {
 
   // 5. The runs of this commit past the floor, polled until the set of them holds still. A wait that
   // prints nothing is indistinguishable from a hang, so the line is written before the first poll and not
-  // after the last.
-  out.write(`open-pr: waiting for the runs of ${sha} (up to ${options.timeout}s)\n`);
+  // after the last — and it prints the seconds the wait was handed, not the declared number.
+  const waitSeconds = remainingSeconds();
+  out.write(`open-pr: waiting for the runs of ${sha} (up to ${waitSeconds}s)\n`);
 
   const found = await findRun({
     exec,
@@ -514,7 +591,8 @@ export async function run(deps = {}) {
     // the command took its floor, so a floor would hide exactly the runs it is here to report.
     floor: adopted ? 0 : floor,
     sleep,
-    timeoutSeconds: options.timeout,
+    timeoutSeconds: waitSeconds,
+    remainingMs,
     intervalSeconds: DEFAULT_INTERVAL_SECONDS,
   });
 
@@ -532,8 +610,8 @@ export async function run(deps = {}) {
   if (ids.length === 0) {
     out.write(
       adopted
-        ? `open-pr: unknown — no run of ${sha} appeared within ${options.timeout}s for the adopted ${pullRequest.url}, so it has no verdict; this is not a failure\n`
-        : `open-pr: unknown — no run of ${sha} appeared within ${options.timeout}s that the creation could have fired; this is not a failure\n`,
+        ? `open-pr: unknown — no run of ${sha} appeared within ${waitSeconds}s for the adopted ${pullRequest.url}, so it has no verdict; this is not a failure\n`
+        : `open-pr: unknown — no run of ${sha} appeared within ${waitSeconds}s that the creation could have fired; this is not a failure\n`,
     );
     return UNKNOWN;
   }
@@ -567,7 +645,7 @@ export async function run(deps = {}) {
     // Only a run that has not answered is waited for: waiting on a set that already holds a red would
     // delay a verdict that cannot change. Each call is bounded by what is left of the budget, because a
     // command that never returns is how the wait this replaces got skipped.
-    const remaining = Math.max(1, Math.round(options.timeout - found.spentSeconds));
+    const remaining = remainingSeconds();
     for (const { id } of undecided(decided)) {
       const watched = exec(
         withRepo(options.repo, [
@@ -600,7 +678,7 @@ export async function run(deps = {}) {
   const code = isRed(decided) ? RED : undecided(decided).length === 0 ? GREEN : UNKNOWN;
   if (code === UNKNOWN) {
     const waiting = decided.length === 1 ? 'the run' : `${undecided(decided).length} of ${decided.length} runs`;
-    out.write(`open-pr: unknown — ${waiting} did not conclude within ${options.timeout}s; this is not a failure\n`);
+    out.write(`open-pr: unknown — ${waiting} did not conclude within ${waitSeconds}s; this is not a failure\n`);
   }
   out.write(
     `open-pr: ${pullRequest.url}  ·  ${code === RED ? 'failed' : code === GREEN ? 'passed' : 'unknown'}\n`,
@@ -699,6 +777,26 @@ function defaultResolveHead() {
  * @param {string} head the branch the run must belong to
  * @returns {string} the commit that branch points at, or the empty string when it cannot be resolved
  */
+/**
+ * The commit `refs/heads/<head>` is at on origin, from `git ls-remote`. Three answers, kept apart because
+ * they lead to three different sentences: the commit, no such branch, and a remote that did not answer.
+ *
+ * @param {string} head
+ * @param {{ timeoutMs?: number }} [options]
+ * @returns {{ ok: boolean, sha: string }}
+ */
+function defaultRemoteSha(head, { timeoutMs } = {}) {
+  const result = spawnSync('git', ['ls-remote', 'origin', `refs/heads/${head}`], {
+    encoding: 'utf8',
+    timeout: timeoutMs ?? LOCAL_GIT_TIMEOUT_MS,
+  });
+  if (result.status !== 0) return { ok: false, sha: '' };
+
+  const line = String(result.stdout ?? '').trim().split('\n')[0];
+  const sha = line.split('\t')[0].trim();
+  return { ok: true, sha: /^[0-9a-f]{40}$/.test(sha) ? sha : '' };
+}
+
 function defaultResolveSha(head) {
   // The local branch, then its remote-tracking copy: a branch pushed from another worktree has only
   // the second one here.

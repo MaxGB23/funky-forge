@@ -18,8 +18,8 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -93,14 +93,51 @@ export function checkEntriesPresent(files, allowed) {
 }
 
 /** npm's own CLI entry point, run by this interpreter: a `.cmd` shim is not spawnable without a shell. */
-function npmCli() {
-  const candidates = [
-    process.env.npm_execpath,
-    join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js'),
-  ].filter((value) => typeof value === 'string' && existsSync(value));
+/**
+ * npm's own CLI entry point, run by this interpreter. Three places, in the order that keeps a lifecycle
+ * script from starting to read the environment's path:
+ *
+ * 1. `npm_execpath`, which npm sets for everything it spawns — the way CI and `prepublishOnly` arrive;
+ * 2. the CLI bundled beside this interpreter;
+ * 3. the `npm` on the path, where a human running this file straight from a shell arrives. On Unix that
+ *    entry is a symlink into the prefix that installs npm, so the link is followed and what it points at
+ *    decides: a `.cmd` or a shell shim is not spawnable by this interpreter, and following the link to
+ *    `npm-cli.js` is the installation that works.
+ *
+ * The probes are injected so a test can describe a machine it does not have, and so a broken link is a
+ * step that does not answer instead of a crash that names the wrong problem.
+ *
+ * @param {{ env?: Record<string, string|undefined>, exists?: (path: string) => boolean, real?: (path: string) => string }} [host]
+ * @returns {string}
+ */
+export function npmCli({ env = process.env, exists = existsSync, real = realpathSync } = {}) {
+  const named = env.npm_execpath;
+  if (typeof named === 'string' && named !== '' && exists(named)) return named;
 
-  if (candidates.length === 0) throw new Error('cannot find npm: neither npm_execpath nor the bundled CLI exists');
-  return candidates[0];
+  const bundled = join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+  if (exists(bundled)) return bundled;
+
+  const path = env.PATH ?? env.Path ?? '';
+  for (const directory of String(path).split(delimiter)) {
+    if (directory === '') continue;
+    for (const name of ['npm-cli.js', 'npm']) {
+      const candidate = join(directory, name);
+      if (!exists(candidate)) continue;
+      let resolved;
+      try {
+        resolved = real(candidate);
+      } catch {
+        continue;
+      }
+      // What the link points at decides. A shim is a `.cmd` or a shell script, and this interpreter
+      // cannot run either one.
+      if (resolved.endsWith('.js') && exists(resolved)) return resolved;
+    }
+  }
+
+  throw new Error(
+    'cannot find npm: npm_execpath is unset, no CLI is bundled with this interpreter, and the path holds no npm-cli.js',
+  );
 }
 
 /** @param {string} root @returns {Array<string>} the paths npm would pack */
