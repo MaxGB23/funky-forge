@@ -59,10 +59,10 @@ ten minutes that could hold the ritual open for forty. After: a declared ten min
 
 | ID | Spec | Route | Commit |
 |---|---|---|---|
-| T1 | S1 | inline, test-first: three RED tests (one per clause), then the fix | `fix(scripts): adopt only the pull request of this commit, only after a failed creation` |
-| T2 | S2 | inline, test-first with injected probes | `fix(scripts): find npm on Unix by following its path to the CLI` |
-| T3 | S3 | inline, test-first with an injected remote reader | `fix(scripts): refuse when origin's branch is not the commit in front of you` |
-| T4 | S4 | inline, test-first: the budget is measured, not assumed | `fix(scripts): spend one budget, so a declared timeout is the whole ritual` |
+| T1 | S1 | inline, test-first: three RED tests (one per clause), then the fix | `618cf20` — fix(scripts): adopt only the pull request of this commit, only after a failed creation |
+| T2 | S2 | inline, test-first with injected probes | `a774649` — fix(scripts): find npm on Unix by following its path to the CLI |
+| T3 | S3 | inline, test-first with an injected remote reader | `99ed08e` — fix(scripts): refuse when origin's branch is not the commit in front of you |
+| T4 | S4 | inline, test-first: the budget is measured, not assumed | `6db3ba5` — fix(scripts): spend one budget, so a declared timeout is the whole ritual |
 
 T1 and T2 are disjoint in files; T2 may travel in its own commit while T1 is being proven. T3 and T4 change
 `scripts/open-pr.js` again and land after T1, so each is reviewable alone.
@@ -80,3 +80,29 @@ T1 and T2 are disjoint in files; T2 may travel in its own commit while T1 is bei
   `scripts/open-pr.js:366` hands every `gh` call the whole timeout, and only the wait keeps its own account
   (`:279`). Live trap while (1) is unfixed: if the ritual prints `adopted`, compare `headRefOid` by hand
   before trusting the verdict.
+- **L4.** T1 in `618cf20`. RED first: the two new tests failed while the script still adopted on a succeeded
+  creation and on a row from another commit. The lookup now asks `--json number,url,headRefOid` and a row is
+  adopted only at the commit under test; a creation that reported success never enters the adoption branch,
+  so its unreadable URL is red; the ceiling guard stays. Three mutations, each failing exactly one test:
+  the old entry condition (`not ok 35`), the row taken without asking its commit (`not ok 36`), the ceiling
+  guard removed (`not ok 30`). Restored byte for byte (`sha1sum`).
+- **L5.** T2 in `a774649`. `npmCli` is exported and takes injected probes (`env`, `exists`, `real`):
+  `npm_execpath`, then the bundled CLI, then `npm` on `PATH`/`Path` whose link is followed and whose target
+  decides, a shim never being an answer because this interpreter cannot run it. Five tests; four mutations
+  isolate them one by one — bundled not consulted (`not ok 8`), link not followed (`9`), only `PATH` read
+  (`10`), any target accepted (`11`).
+- **L6.** T3 in `99ed08e`. `git ls-remote origin refs/heads/<head>` runs before the floor read and answers
+  three ways kept apart: the commit, which must be the one in front of you; no such branch; a remote that
+  did not answer. A mismatch names both commits and creates nothing. Three mutations isolate the three
+  tests. The 18 existing `run()` fixtures now answer about the remote too, which is the point: a machine
+  that cannot answer is a refusal.
+- **L7.** T4 in `6db3ba5`. One deadline taken before the first child, `remainingMs()` for every child with a
+  one-second floor, `remainingSeconds()` for the wait and for the line it prints, and the poll inside the wait
+  bounded by the same deadline instead of its own clock — that last part is why the first attempt still
+  handed two polls the same number. Four mutations isolate the three tests. The old test that pinned "every
+  child is handed 30 s" was pinning the defect and now pins the replacement.
+- **L8.** Verification: `node --test` 285/285, `npm run pack:check` green (39 packed files against 6 entries),
+  every mutation repeated by hand and every script restored byte for byte. Risk: item 1 (a false green is the
+  failure this file exists to prevent), item 3 (the adoption contract and the printed messages other tooling
+  reads), item 5 (the ritual that opens pull requests) and item 6 (a wait nobody can observe in a unit test).
+  High risk, so the native review is due before delivery.
