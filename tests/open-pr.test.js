@@ -597,6 +597,34 @@ test('a watch that runs out of time is unknown, never a failure', async (t) => {
   assert.match(out.text, /unknown — the run did not conclude within 30s; this is not a failure/);
 });
 
+test('the wait reports the seconds it was given, not the ones the command declared', async (t) => {
+  // The line a human reads before waiting has to be the number the wait actually got. With nothing
+  // spent, that number and the declared one are the same, and a message printing the wrong one passes
+  // every assertion; spending part of the budget is what tells them apart. Two children come first —
+  // the floor read and the creation itself — at five seconds each.
+  let clock = 0;
+  const { exec: answered } = gh({
+    snapshot: [],
+    runs: [{ databaseId: 22, headSha: SHA, status: 'in_progress', conclusion: null }],
+    watch: { ok: false, timedOut: true },
+  });
+  const exec = (args, options) => {
+    const answer = answered(args, options);
+    clock += 5_000;
+    return answer;
+  };
+
+  const { out, deps } = frontHalf(t, { exec, now: () => clock });
+
+  assert.equal(await run(deps), UNKNOWN);
+  assert.match(
+    out.text,
+    /did not conclude within 20s; this is not a failure/,
+    '20 of the declared 30 were left when the wait was handed its seconds',
+  );
+  assert.doesNotMatch(out.text, /did not conclude within 30s/, 'never the number the command was told');
+});
+
 test('a run that concluded failure exits 1 and still names the pull request', async (t) => {
   const out = capture();
   const err = capture();
@@ -830,6 +858,33 @@ test('a create that does not answer is unknown, never red', async (t) => {
   );
   assert.match(created.out.text, /check gh pr list --head feat\/open-pr/, 'and the command that settles it');
   assert.equal(calls.filter((call) => call.startsWith('pr list')).length, 0, 'nothing is adopted on an answer nobody gave');
+});
+
+test('the creation ceiling names what was left of the budget, not what the command declared', async (t) => {
+  // With nothing spent yet, "the seconds left" and "the declared timeout" are the same value, so a
+  // message printing the wrong one passes. Spending ten of the thirty before the creation separates
+  // them, and that is the only way this line is worth reading.
+  let clock = 0;
+  const { exec: answered } = gh();
+  const exec = (args, options) => {
+    const answer = answered(args, options);
+    clock += 10_000;
+    return answer;
+  };
+  const hangCreate = (args, options) =>
+    args[0] === 'pr' && args[1] === 'create'
+      ? { ok: false, stdout: '', stderr: '', timedOut: true }
+      : exec(args, options);
+
+  const created = frontHalf(t, { exec: hangCreate, now: () => clock });
+
+  assert.equal(await run(created.deps), UNKNOWN);
+  assert.match(
+    created.out.text,
+    /create did not answer within its ceiling of 20s/,
+    '20 of the declared 30 were left when the creation was handed its ceiling',
+  );
+  assert.doesNotMatch(created.out.text, /ceiling of 30s/, 'never the number the command was told');
 });
 
 test('a creation that fails because the pull request exists adopts it and reports its verdict', async (t) => {
