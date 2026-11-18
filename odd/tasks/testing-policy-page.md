@@ -62,3 +62,14 @@ adapted as method only — every number below was measured here.
   `node --test` 289 pass, `npm run pack:check` green (39 packed files), `npm pack --dry-run`
   green. S4 adjusted before the record commit: the work unit is one commit, the feature
   document lands separately, per `method-pack-version` precedent.
+- **L5 — approval and delivery.** `status:approved` applied to #53 by the owner's
+  instruction. The first delivery attempts were refused by the RDD pre-flight guard; root
+  cause (diagnosed by two read-only subagents): the guard retains the committed-range hint
+  only when the assess `baseRef` is a full 40/64-hex commit id or a ref name — an
+  abbreviated id (`a1310f0`) is rejected by the provider and leaves the hint unset, so the
+  same refusal repeats; a shell chain with operators beyond `&& || |` also voids a literal
+  `cd` (ambiguous scope). Sanctioned path taken: assess with the full base
+  `a1310f00d1568343e0bfad00c4883386cedfb847`, then standalone delivery commands.
+  Pushed and PR #54 opened with `node scripts/open-pr.js` (label `type:docs`); both CI
+  run sets passed (runs 44421637784, 44421637217: Ubuntu and Windows on Node 22 and 24,
+  `pr-policy` green). Merge remains the owner's decision.
