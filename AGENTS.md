@@ -12,6 +12,7 @@ once settled; the present is edited freely in its own pull request.
 | `skill/` | The agent skill that ships: `SKILL.md`, `references/`, `templates/`. |
 | `scripts/` | The gates: `open-pr.js`, `wait-for-ci.js`, `check-pr-policy.js`, `pack-guard.js`, `release-guard.js`. |
 | `docs/` | Architecture, the CLI manual, the method, artifacts and release; `docs/validation/` holds real runs. |
+| `docs/testing.md` | The testing policy: when a test is required, what makes one admissible, measured against the suite. |
 | `rfcs/` | The record: what was decided and why, frozen once settled. |
 | `odd/tasks/` | Feature records: specs, tasks and an append-only log. |
 | `CONTRIBUTING.md` | The rules a contributor reads first, the three facts of a pull request, and the checks. |

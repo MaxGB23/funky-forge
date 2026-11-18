@@ -37,7 +37,8 @@ npm pack --dry-run
 
 `node --test` must be green on your machine. The same command runs in CI on Ubuntu and Windows for
 Node 22 and 24; a red Windows leg is a real failure, not an environment quirk. `npm pack --dry-run`
-shows exactly which files a consumer receives.
+shows exactly which files a consumer receives. When a test is required, and what makes one
+admissible, is decided by [docs/testing.md](docs/testing.md).
 
 Node 22 or newer is required (`engines.node` in `package.json`). There is no dependency install, no
 build step and no network access at runtime.
