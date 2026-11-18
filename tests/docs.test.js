@@ -60,6 +60,20 @@ function anchors(file) {
   return new Set(headings);
 }
 
+test('every path named in the AGENTS.md map exists', () => {
+  const rows = markdown('AGENTS.md')
+    .split('\n')
+    .filter((line) => line.startsWith('| `'))
+    .map((line) => line.slice(2, line.indexOf('`', 2)));
+  // A map with fewer rows than the parser expects means the row parser broke, not the map.
+  assert.ok(rows.length >= 8, `parsed only ${rows.length} map rows; the parser is broken, not the map`);
+  const missing = rows.filter((path) => {
+    const stat = statSync(join(ROOT, path), { throwIfNoEntry: false });
+    return !stat || !(stat.isFile() || stat.isDirectory());
+  });
+  assert.deepEqual(missing, []);
+});
+
 test('every relative documentation link points at a file that exists', () => {
   const files = docsFiles();
   const broken = [];
