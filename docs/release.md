@@ -48,10 +48,10 @@ in place as the record of what was not released.
 A trusted publisher is configured on a package, and a package exists only after something publishes it,
 so the first version cannot be staged by CI. Measured on `funky-secure`, 2026-11-07:
 
-1. The owner stages **once** from a local session: `npm login`, then `npm stage publish` from a worktree
-   of a commit whose version **will never ship**. Staging a version occupies the same semver unique
-   index as publishing it, so claiming with `0.1.0` would make `0.1.0` unstaged-able for CI. Claim with
-   a throwaway like `0.0.1`.
+1. The first candidate is staged **once** from a local session: `npm login`, then `npm stage publish`
+   from a worktree of a commit whose version **will never ship**. Staging a version occupies the same
+   semver unique index as publishing it, so claiming with `0.1.0` would make `0.1.0` unstaged-able for
+   CI. Claim with a throwaway like `0.0.1`.
 2. The owner configures the trusted publisher while the package exists — GitHub Actions, this
    repository, `release.yml`, environment empty, `npm stage publish` only — and the session expires on
    its own: it is a two-hour credential with nothing to log out of.
@@ -96,10 +96,9 @@ remedy that was measured; rewriting metadata is not.
 
 ## The GitHub Release
 
-Written by the maintainer **after** the approval, never by the workflow that staged. Release
-immutability must be enabled **before** the release is published: GitHub applies it only to releases
-published after the setting is on. The body records the commit the tag points at, the
-`dist.integrity` the registry returned, and the provenance URL.
+Written by the agent **after** the approval, never by the workflow that staged. Release immutability is
+already enabled: GitHub applies it only to releases published after the setting is on. The body records
+the commit the tag points at, the `dist.integrity` the registry returned, and the provenance URL.
 
 ## Merging
 

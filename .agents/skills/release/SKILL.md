@@ -5,13 +5,28 @@ description: Ship a funky-forge version through a staged candidate, a human appr
 
 # Release
 
-Stage it, review it, approve it, then write the notes. This is the order a maintainer runs, and
+Stage it, review it, approve it, then write the notes. This is the order a release runs, and
 [`AGENTS.md`](../../../AGENTS.md) is where the rules behind it live.
 
 ## Activation
 
 Runs when the owner says a version ships. It never decides that a version ships, never approves a
 candidate, never moves a tag, and never runs `npm publish`.
+
+## Who runs what
+
+The owner contributes two things and only two: `npm login`, because the session is the credential, and
+`npm stage approve <id>` — or `reject` — under 2FA, because that is where a candidate becomes
+installable. Every other step in this file is run for them and reported with its evidence: the gate, the
+tag, watching the stage, the artifact review, the verification and the Release. A doubt about a step is
+settled by reading its evidence, not by handing the step back.
+
+The 2FA prompt never travels through a chat. And a missing credential never moves a step: it stops the
+step and asks for a login, which is what the `E401` note in step 4 says.
+
+Three settings no command can make are already in place for this package — release immutability, the
+trusted publisher, and npm's two-factor policy for publishing access. They are listed once under
+**Preconditions**, because they are preconditions of a release and not steps it runs.
 
 ## Preconditions
 
@@ -27,6 +42,8 @@ Any one of these being false means the release stops here, before anything touch
 - `npm --version` is 11.15.0 or higher. `npm stage` does not exist before it.
 - 2FA is enabled for writes on the account.
 - The package's trusted publisher allows **`npm stage publish` only**, never `npm publish`.
+- Release immutability is enabled on the repository, and stays on: GitHub applies it only to releases
+  published after the setting is on, so the tag binding is enforced rather than promised.
 - A release workflow on `main` stages on a `v*` tag. Without it nothing stages, and there is nothing to
   approve.
 - No unpublish in the last 24 hours: the registry locks the name and answers
@@ -34,9 +51,9 @@ Any one of these being false means the release stops here, before anything touch
 
 ## The sequence
 
-1. **Green gate on that commit** — the owner. `node --test` and `npm run pack:check`. The same gate
+1. **Green gate on that commit** — the agent. `node --test` and `npm run pack:check`. The same gate
    runs again inside `prepublishOnly` when the candidate is staged.
-2. **Push the tag** — the owner. `git tag vX.Y.Z && git push origin vX.Y.Z`, on the commit from step 1.
+2. **Push the tag** — the agent. `git tag vX.Y.Z && git push origin vX.Y.Z`, on the commit from step 1.
 3. **Stages the candidate** — the release workflow, over OIDC, with no credential anywhere. It ends
    with the stage id in its step summary and does not publish.
    **A failed report does not undo the stage.** When the step that reads the id dies, the candidate
@@ -44,25 +61,23 @@ Any one of these being false means the release stops here, before anything touch
    re-push the tag — it does not move, and the version is already queued — and do not reject the
    candidate to "clean up": on a package whose only content is the placeholder, a reject unpublishes
    the package and destroys its trusted publisher.
-4. **Reviews the candidate** — the maintainer, and **with a live `npm login` session**: `npm stage`
-   authenticates, so a review begun without one answers `E401`, and the two-hour session step 5 needs
-   does not exist yet. `npm stage list`, `npm stage view <id>`, `npm stage download <id>` — which writes
-   the tarball into the working directory, because it ignores a destination argument — then read the
-   tarball's file set against the `files` contract. **Compare the artifact's `sha1` with the `shasum` in
-   `npm stage list`**: that is the difference between having reviewed a tarball and having reviewed *the*
-   tarball the registry will serve.
-5. **Approves with 2FA** — the maintainer. Nothing is installable before this. A fresh candidate
-   reports `validating` before `staged`: approve only once it reads `staged`. And an unapproved
+4. **Reviews the candidate** — the agent, and **with a live `npm login` session the owner opened**:
+   `npm stage` authenticates, so a review begun without one answers `E401`, and the two-hour session step
+   5 needs does not exist yet. `npm stage list`, `npm stage view <id>`, `npm stage download <id>` — which
+   writes the tarball into the working directory, because it ignores a destination argument — then read
+   the tarball's file set against the `files` contract. **Compare the artifact's `sha1` with the `shasum`
+   in `npm stage list`**: that is the difference between having reviewed a tarball and having reviewed
+   *the* tarball the registry will serve.
+5. **Approves with 2FA** — the owner, and only this step. Nothing is installable before this. A fresh
+   candidate reports `validating` before `staged`: approve only once it reads `staged`. And an unapproved
    candidate is not free — the semver index treats that version as taken — so decide: approve it, or
    reject it deliberately with `npm stage reject <id>`.
-6. **Verifies what users get** — the maintainer. `npm view funky-forge@<version>`,
+6. **Verifies what users get** — the agent. `npm view funky-forge@<version>`,
    `npm view funky-forge@<version> dist.integrity`, `dist.attestations`, and
    `npx funky-forge@<version> --version`. The attestation is the only link between the commit and the
    bytes a user installs, and it survives staged approval — measured on `funky-secure@0.10.2`.
-7. **Publishes the Release** — the maintainer, after the approval and never before. Release
-   immutability is enabled **first** (Settings → Releases), because GitHub applies it only to releases
-   published after the setting is on. Write `RELEASE_NOTES.md` with the tagged commit, the
-   `dist.integrity` and the provenance URL, run
+7. **Publishes the Release** — the agent, after the approval in step 5 and never before. Write
+   `RELEASE_NOTES.md` with the tagged commit, the `dist.integrity` and the provenance URL, run
    `gh release create vX.Y.Z --title "vX.Y.Z" --notes-file RELEASE_NOTES.md`, then delete the file.
    When the tag already exists, `gh release create` records `target_commitish` as the default branch
    rather than the commit: the binding an auditor should compare is the immutable tag and the
@@ -102,8 +117,6 @@ on a package and a package exists only after a first publish.
   does not exist anywhere, so recording one would be an invented number.
 - An unpublish is not reversible: `name@version` never comes back and the name is locked for 24 hours.
   A first publication is one attempt with a recovery window, not a retry loop.
-- Enable "release immutability" in the repository settings, so the tag binding is enforced rather than
-  promised.
 
 ## Output
 
