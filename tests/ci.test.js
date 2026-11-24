@@ -133,6 +133,33 @@ test('a draft pull request does not decide its own policy', () => {
   );
 });
 
+/** R3-001: `npm run pack:check` on a pull request is the one thing the macOS leg does that no other
+ * leg does, and nothing observed it. The assertion reads the workflow structurally, through the same
+ * parser the issue forms use: a text search would also match the job's own header comment, which
+ * mentions the command, and would then pass on a step that no longer exists. `runs-on` is
+ * deliberately not asserted here — `PLATFORMS` owns that string, and one contract gets one case.
+ */
+test('the macOS job runs the packed-set check', () => {
+  const jobs = parseYaml(WORKFLOW).jobs ?? {};
+  const job = jobs['test-macos'];
+  assert.ok(job, 'the workflow has no test-macos job, so nothing runs the suite or the packed set on macOS');
+  assert.equal(
+    job.if,
+    undefined,
+    'a conditional macOS job can stop running on pull requests without a red test',
+  );
+
+  const steps = job.steps ?? [];
+  assert.ok(
+    steps.every((step) => step.if === undefined),
+    'a conditional step can silence the packed-set check without turning the pull request red',
+  );
+
+  const runs = steps.map((step) => step.run).filter(Boolean);
+  assert.ok(runs.includes('node --test'), 'the macOS job does not run the suite');
+  assert.ok(runs.includes('npm run pack:check'), 'the macOS job does not run the packed-set check');
+});
+
 test('every issue form parses and declares the fields GitHub requires', () => {
   const forms = ['bug_report', 'feature_request'];
 
