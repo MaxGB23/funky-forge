@@ -35,8 +35,8 @@ The module map, file by file, is in [`docs/architecture.md`](docs/architecture.m
   the matrix, not the run summary; on a push to `main` `pr-policy` reads `skipped`, which is not a
   failure to investigate.
 - **Before a pull request:** `node --test` and `npm run pack:check`. A suite reporting fewer tests than
-  the last run has not run faster. CI runs Ubuntu and Windows on Node 22 and 24; a red Windows leg is a
-  real failure.
+  the last run has not run faster. CI runs Ubuntu and Windows on Node 22 and 24, and macOS arm64 on
+  Node 24; a red Windows leg is a real failure.
 - **Conventional Commits, one logical change per commit.** Tests and the documentation that describes a
   behaviour travel in the same commit. No `Co-Authored-By` trailers.
 - **Zero dependencies, no build step, no network at runtime.** `engines.node` is 22 or newer.
