@@ -19,8 +19,8 @@ const PACKAGE = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8'));
 /** The Active LTS when this policy was written; bumped deliberately, like an action pin. */
 const ACTIVE_LTS = '24';
 
-/** The two platforms this package is expected to serve. */
-const PLATFORMS = ['ubuntu-24.04', 'windows-2025'];
+/** The platforms this package is expected to serve. */
+const PLATFORMS = ['ubuntu-24.04', 'windows-2025', 'macos-26'];
 
 /** The binary extensions `.gitattributes` marks, kept in step with that file. */
 const BINARY_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'ico', 'woff', 'woff2', 'pdf', 'zip'];
@@ -42,7 +42,7 @@ test('the binary extensions the pack may carry are marked binary', () => {
   }
 });
 
-test('the suite runs on both platforms by exact image label', () => {
+test('the suite runs on every platform by exact image label', () => {
   for (const label of PLATFORMS) {
     assert.ok(WORKFLOW.includes(label), `CI never runs on ${label}, so that platform is unverified`);
   }

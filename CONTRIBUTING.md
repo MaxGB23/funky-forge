@@ -36,7 +36,9 @@ npm pack --dry-run
 ```
 
 `node --test` must be green on your machine. The same command runs in CI on Ubuntu and Windows for
-Node 22 and 24; a red Windows leg is a real failure, not an environment quirk. `npm pack --dry-run`
+Node 22 and 24, and on macOS arm64 for Node 24; a red Windows leg is a real failure, not an environment
+quirk. The macOS leg also runs `npm run pack:check`, because a pull request that breaks the `files`
+contract is otherwise caught at release time and not at review time. `npm pack --dry-run`
 shows exactly which files a consumer receives. When a test is required, and what makes one
 admissible, is decided by [docs/testing.md](docs/testing.md).
 
