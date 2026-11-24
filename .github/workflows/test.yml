@@ -66,8 +66,8 @@ jobs:
   #     reaches on a `v*` tag: a pull request that breaks the `files` contract
   #     is caught at release time. Here it runs on the pull request, and on a
   #     second platform, so the packed set is compared on darwin as well as
-  #     linux. Home is not the cheapest leg on purpose: Ubuntu would be, and
-  #     moving the check there is a separate decision.
+  #     linux. This is not the cheapest home for the check on purpose: the
+  #     Ubuntu leg would be, and moving it there is a separate decision.
   # arm64 and one Node line: the package has no native code, so a second
   # architecture or a second Node line would duplicate bytes, not coverage.
   # Never `-latest` (see tests/ci.test.js) and never `-large`, which is a
