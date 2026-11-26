@@ -98,14 +98,14 @@ and becomes a test.
 
 | ID | Spec | Route | Commit |
 |---|---|---|---|
-| T1 | S6 | `src/lib/evaluate.js` + `src/commands/check.js`: move the rules behind `evaluateArtifact({cwd, phase})`; `check` keeps rendering, `--strict` and the exit decision. Fixture matrix against the parent commit before and after | pending |
-| T2 | S4 | `src/lib/frontmatter.js`: a surgical writer for the four keys plus their reader, with the insertion point fixed. No serializer exists (`src/lib/yaml.js` exports `parseYaml` and `YamlError`), so the raw block is edited in place. Bind the normalized text to one name while there: `:55` re-derives `source.replace(/\r\n/g,'\n')` and reads as if it sliced the raw source (`JD-B` refuted) | pending |
-| T3 | S1, S2, S3, S7, S8 | `src/commands/approve.js`: evaluation precondition minus the two clearing states, the three new codes, the five-state branch, the write, the re-verification, `--dry-run`, `--json`, injectable clock | pending |
-| T4 | S5, S7 | `src/commands/stale.js`: validate existing targets, then revoke and propagate; skip absent, leave already-stale alone; same output contract | pending |
-| T5 | S7 | `src/cli.js`: dispatch rows, flag specs and help text for both commands. The shared `--force` summary (`src/cli.js:49`) is **not** edited — `install --help` would change with it (`JD-A-010` round 1) | pending |
-| T6 | S9 | `docs/cli.md`, `docs/artifacts.md`, `docs/architecture.md`, `skill/SKILL.md`, `skill/references/00-map.md`, `README.md`, in the same commit as the behaviour they describe | pending |
-| T7 | S1-S9 | `tests/approve.test.js`, `tests/stale.test.js`, and the S9 fixture matrix | pending |
-| J1 | S1-S10 | Blind `PAIR`. Round 1 refuted v1 (`L4`), round 2 refuted v2 (`L7`). The round cap is spent; v3 stands on the parent's own reads and that is stated where the work is recorded | v1-v2 judged, v3 unjudged |
+| T1 | S6 | `src/lib/evaluate.js` + `src/commands/check.js`: move the rules behind `evaluateArtifact({cwd, phase})`; `check` keeps rendering, `--strict` and the exit decision. Fixture matrix against the parent commit before and after | `5a17888` |
+| T2 | S4 | `src/lib/frontmatter.js`: a surgical writer for the four keys plus their reader, with the insertion point fixed. No serializer exists (`src/lib/yaml.js` exports `parseYaml` and `YamlError`), so the raw block is edited in place. Bind the normalized text to one name while there: `:55` re-derives `source.replace(/\r\n/g,'\n')` and reads as if it sliced the raw source (`JD-B` refuted) | `3f49082` |
+| T3 | S1, S2, S3, S7, S8 | `src/commands/approve.js`: evaluation precondition minus the two clearing states, the three new codes, the five-state branch, the write, the re-verification, `--dry-run`, `--json`, injectable clock | `3f49082` |
+| T4 | S5, S7 | `src/commands/stale.js`: validate existing targets, then revoke and propagate; skip absent, leave never-approved and already-stale alone; same output contract | `3f49082` |
+| T5 | S7 | `src/cli.js`: dispatch rows, flag specs and help text for both commands. The shared `--force` summary (`src/cli.js:49`) is **not** edited — `install --help` would change with it (`JD-A-010` round 1) | `3f49082` |
+| T6 | S9 | `docs/cli.md`, `docs/artifacts.md`, `docs/architecture.md`, `docs/method.md`, `docs/testing.md`, `skill/SKILL.md`, `skill/references/00-map.md`, `README.md`, in the same commit as the behaviour they describe | `3f49082` |
+| T7 | S1-S9 | `tests/approve.test.js`, `tests/stale.test.js`, and the S9 fixture matrix | `3f49082` |
+| J1 | S1-S10 | Blind `PAIR`. Round 1 refuted v1 (`L4`), round 2 refuted v2 and one premise of mine (`L6`). The round cap is spent; v3 stands on the parent's own reads | done, cap spent |
 | J2 | S1-S9 | Blind `PAIR` once the change's claims are about to be believed | pending |
 | J3 | S1-S9 | `SINGLE` closing audit, once every `T*` row is `done` | pending |
 
