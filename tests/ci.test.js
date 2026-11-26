@@ -160,6 +160,39 @@ test('the macOS job runs the packed-set check', () => {
   assert.ok(runs.includes('npm run pack:check'), 'the macOS job does not run the packed-set check');
 });
 
+/** Issue #64: a job outside the matrix that declares no `name` is rendered in the pull-request check
+ * list as its bare id, so `test-macos` says nothing about the platform or the Node line it ran. The
+ * matrix job keeps its id bare on purpose: it composes its own rendered name from the axes, and the
+ * id is what `scripts/wait-for-ci.js` and the cases here read. This case derives the expected name
+ * from the job itself rather than restating the string, so a bare `node-version` bump or a missing
+ * `name` fails instead of drifting silently.
+ */
+test('the macOS job is named for the runner and Node line it declares', () => {
+  const jobs = parseYaml(WORKFLOW).jobs ?? {};
+  const job = jobs['test-macos'];
+  assert.ok(job, 'the workflow has no test-macos job, so there is no name to check');
+
+  const setup = (job.steps ?? []).find((step) => String(step.uses ?? '').startsWith('actions/setup-node'));
+  assert.ok(setup, 'the macOS job sets up no Node, so its name has no Node line to come from');
+
+  const nodeLine = setup.with?.['node-version'];
+  assert.ok(nodeLine !== undefined, 'the setup-node step declares no node-version');
+
+  const runner = String(job['runs-on']);
+  const node = String(nodeLine);
+
+  assert.equal(
+    typeof job.name,
+    'string',
+    'the macOS job declares no name, so GitHub renders the bare id in the check list',
+  );
+  // Bounded, never `includes`: `macos-26` is a prefix of `macos-26-intel`, and a name that still says
+  // `node 24` contains `26` the moment the runner is `macos-26` — a bare substring test passes on exactly
+  // the drift it exists to catch.
+  assert.match(job.name, new RegExp(`\\(${runner}(?: |\\))`), `the name '${job.name}' does not say which runner it runs on (${runner})`);
+  assert.match(job.name, new RegExp(`node ${node}\\)`), `the name '${job.name}' does not say which Node line it runs (${node})`);
+});
+
 test('every issue form parses and declares the fields GitHub requires', () => {
   const forms = ['bug_report', 'feature_request'];
 

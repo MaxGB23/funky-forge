@@ -73,6 +73,11 @@ jobs:
   # Never `-latest` (see tests/ci.test.js) and never `-large`, which is a
   # larger runner rather than a standard one.
   test-macos:
+    # This job declares a name because it is outside the matrix: there is nothing to compose one
+    # from, so GitHub would render the bare id `test-macos` and the check list would say nothing
+    # about the platform or the Node line. The job id stays `test-macos` on purpose — that is what
+    # `scripts/wait-for-ci.js` and `tests/ci.test.js` read — and the rendered name is for people.
+    name: test-macos (macos-26 arm64, node 24)
     runs-on: macos-26
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
