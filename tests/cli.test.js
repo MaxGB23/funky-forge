@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -11,6 +11,8 @@ const COMMANDS_FOR_TEST = {
   install: ['target', 'dry-run', 'with-pointer', 'force', 'check', 'json', 'help'],
   init: ['language', 'proposal-language', 'force', 'json', 'help'],
   check: ['json', 'strict', 'help'],
+  approve: ['by', 'dry-run', 'force', 'json', 'help'],
+  stale: ['dry-run', 'json', 'help'],
   calc: ['write', 'json', 'help'],
 };
 
@@ -53,10 +55,11 @@ test('an unknown command fails with usage on stderr', async () => {
 });
 
 test('every documented command is routed, not rejected as unknown', async () => {
-  const phases = { check: ['design'] };
-  for (const command of ['install', 'init', 'check', 'calc']) {
+  const phases = { check: ['design'], approve: ['design'], stale: ['design'] };
+  for (const command of ['install', 'init', 'check', 'approve', 'stale', 'calc']) {
     const { err } = await run([command, ...(phases[command] ?? [])]);
     assert.doesNotMatch(err, /unknown command/, command);
+    assert.doesNotMatch(err, /implemented in a later step/, command);
   }
 });
 
@@ -126,11 +129,12 @@ test('the help text cannot drift from the parser', () => {
 
 test('USAGE lists every command and marks optional flags as optional', () => {
   const lines = USAGE.split('\n');
-  for (const command of ['install', 'init', 'check', 'calc']) {
+  for (const command of ['install', 'init', 'check', 'approve', 'stale', 'calc']) {
     assert.ok(lines.some((line) => line.trim().startsWith(`funky-forge ${command} `)), command);
   }
   assert.ok(USAGE.includes('[--target <agents|claude>]'));
   assert.ok(USAGE.includes('check <phase>'));
+  assert.ok(USAGE.includes('approve <phase> [--by <name>]'));
   assert.ok(!USAGE.includes('[<phase>]'));
 });
 
@@ -143,4 +147,114 @@ test('every declared flag appears in its own command help', async () => {
 
 test('a value flag without a placeholder is reported instead of shipped', () => {
   assert.equal(helpProblems().filter((problem) => /placeholder/.test(problem)).length, 0);
+});
+
+test('approve and stale take a phase and refuse an unknown flag', async () => {
+  const approve = await run(['approve', '--nope']);
+  assert.equal(approve.code, 1);
+  assert.match(approve.err, /UNKNOWN_FLAG: unknown flag for approve: --nope/);
+
+  const stale = await run(['stale', '--nope']);
+  assert.equal(stale.code, 1);
+  assert.match(stale.err, /UNKNOWN_FLAG: unknown flag for stale: --nope/);
+
+  for (const command of ['approve', 'stale']) {
+    const missing = await run([command]);
+    assert.equal(missing.code, 1, command);
+    assert.match(missing.err, new RegExp(`PHASE_REQUIRED: ${command} needs a phase`), command);
+    const unknown = await run([command, 'bogus']);
+    assert.equal(unknown.code, 1, command);
+    assert.match(unknown.err, /UNKNOWN_PHASE: "bogus" is not one of problem, design, estimate, proposal/, command);
+  }
+});
+
+test('a --by flag without a name is refused by the parser', async () => {
+  const { code, err } = await run(['approve', 'problem', '--by']);
+  assert.equal(code, 1);
+  assert.match(err, /FLAG_VALUE_MISSING: --by needs a value/);
+});
+
+test('approve writes the approval through the command line, and stale revokes it', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ff-cli-'));
+  mkdirSync(join(dir, '.funky-forge/gates'), { recursive: true });
+  writeFileSync(join(dir, '.funky-forge/gates/1-problem.md'), '---\nphase: problem\nverdict: PASS\ndepth: light\nescalation_reason: null\nreviewer: product\ndate: 2026-10-01\nfindings: 0\nnot_verified: []\naccepted_risks: []\n---\n', 'utf8');
+  writeFileSync(
+    join(dir, '.funky-forge/brief.md'),
+    [
+      '---',
+      'schema: 1',
+      'phase: problem',
+      'status: draft',
+      'depends_on: []',
+      'language: en',
+      'approved_by: null',
+      'approved_at: null',
+      'approved_hash: null',
+      'method_version: 1',
+      '---',
+      '',
+      '## One-line summary',
+      '',
+      'A shared-equipment checkout record.',
+      '',
+      '## Problem today',
+      '',
+      'The record lives in a spreadsheet and a chat channel.',
+      '',
+      '## Users and volume',
+      '',
+      'Forty members read it and two maintainers write it.',
+      '',
+      '## Core flow',
+      '',
+      'A member requests an item and a maintainer records the handover.',
+      '',
+      '## Must-haves',
+      '',
+      '- One catalogue with a unique identifier per item.',
+      '',
+      '## Out of scope',
+      '',
+      '- Tracking hardware.',
+      '',
+      '## Success metric',
+      '',
+      'Zero mismatches at the 90-day audit.',
+      '',
+      '## Deadline and constraints',
+      '',
+      'Three weeks at USD 35 per hour.',
+      '',
+      '## Current cost of the problem',
+      '',
+      'unknown.',
+      '',
+    ].join('\n'),
+    'utf8',
+  );
+
+  const approved = await run(['approve', 'problem', '--by', 'the client'], dir);
+  assert.equal(approved.code, 0, approved.err);
+  assert.match(approved.out, /approved_by: the client/);
+  assert.match(approved.out, /approved_at: \d{4}-\d{2}-\d{2}/);
+  assert.match(approved.out, /wrote: .funky-forge\/brief.md/);
+  assert.equal(readFileSync(join(dir, '.funky-forge/brief.md'), 'utf8').includes('status: approved'), true);
+
+  const revoked = await run(['stale', 'problem'], dir);
+  assert.equal(revoked.code, 0, revoked.err);
+  assert.match(revoked.out, /wrote: .funky-forge\/brief.md \(draft\)/);
+  assert.equal(readFileSync(join(dir, '.funky-forge/brief.md'), 'utf8').includes('status: draft'), true);
+
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('the shared --force summary still describes install, and approve documents its own', async () => {
+  const install = await run(['install', '--help']);
+  assert.match(install.out, /--force\s+overwrite files that differ from the shipped pack/);
+
+  const approve = await run(['approve', '--help']);
+  assert.equal(approve.code, 0);
+  assert.match(approve.out, /funky-forge approve - /);
+  assert.match(approve.out, /--force\s+re-date an already approved artifact; never bypasses the gate/);
+  assert.doesNotMatch(approve.out, /overwrite files that differ/);
 });

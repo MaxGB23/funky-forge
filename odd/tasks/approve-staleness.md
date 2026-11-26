@@ -51,15 +51,17 @@ and becomes a test.
   `src/lib/artifact.js:70`.)
 - **S5 — `stale` revokes and propagates, and validates everything before it writes anything.**
   `funky-forge stale <phase>` sets the phase to `status: draft` and removes `approved_by`, `approved_at` and
-  `approved_hash`, then marks every **existing** dependent `stale` — transitively over the inverted
-  `DEPENDENCIES` map (`src/lib/artifact.js:14-19`). A dependent that does not exist is skipped and reported as
-  skipped: there is nothing to mark, and it is not an error. A dependent already `stale` is left untouched and
-  is not counted as changed. Every target that will be written is read and parsed **before** the first write,
-  so a malformed dependent aborts with nothing changed; each written path is reported, and gate reports are
-  never touched. The recovery for a mistaken run is the repository's own history, named here instead of an
-  invented rollback. This is the command `skill/references/00-map.md:54-56` tells an agent to perform by
-  editing YAML. (Issue #71 body; `JD-A-007`, `JD-A-008`, `JD-B` round 2 on missing and already-stale
-  dependents.)
+  `approved_hash`, then marks every **approved** dependent `stale` — transitively over the inverted
+  `DEPENDENCIES` map (`src/lib/artifact.js:14-19`). A dependent that was never approved holds no approval to
+  lose, so it is left byte-identical and reported as unchanged: marking a `draft` dependent `stale` would
+  make `check` refuse `STALE_ARTIFACT` for a state that artifact never entered. A dependent that does not
+  exist is skipped and reported as skipped: there is nothing to mark, and it is not an error. A dependent
+  already `stale` is left untouched and is not counted as changed. Every target that will be written is read
+  and parsed **before** the first write, so a malformed dependent aborts with nothing changed; each written
+  path is reported, and gate reports are never touched. The recovery for a mistaken run is the repository's
+  own history, named here instead of an invented rollback. This is the command
+  `skill/references/00-map.md:54-56` tells an agent to perform by editing YAML. (Issue #71 body; `JD-A-007`,
+  `JD-A-008`, `JD-B` round 2; corrected at `L8`.)
 - **S6 — One rule set, two readers, and the strictness stays in `check`.** The evaluation `check` performs
   moves into `evaluateArtifact({cwd, phase})` returning `{hash, errors, warnings}`; `check` keeps its
   rendering, its `--strict` promotion (`src/commands/check.js:84-86`) and its exit decision, because
@@ -168,3 +170,13 @@ and becomes a test.
   is **unjudged by design**: it stands on the parent's own reads, which are recorded above with the commands
   and outputs that produced them. The next judgment on this work is `J2`, over the change rather than the
   plan.
+- **L8** — Correction found while implementing T4, and it changes S5. S5 said `stale` marks every *existing*
+  dependent, and taken literally that includes a `draft` dependent that never held an approval. `init` creates
+  all four artifacts as `draft`, so `stale problem` would have marked `design`, `estimate` and `proposal`
+  `stale` before anyone approved anything, and `check design` would then refuse `STALE_ARTIFACT` for a state
+  that artifact never entered. The method's own wording is narrower than the spec was:
+  `skill/references/00-map.md:51` defines `stale` as "An approved dependency changed". S5 now marks only
+  **approved** dependents, leaves a never-approved dependent byte-identical, and reports it as unchanged with
+  the status it kept. Pinned test-first: the new case was RED against the literal implementation (`wrote:
+  .funky-forge/design.md (stale)`) and GREEN after the correction; the suite is 332 tests, 332 pass, 0 fail,
+  0 skipped.

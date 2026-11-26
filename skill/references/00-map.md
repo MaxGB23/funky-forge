@@ -51,9 +51,9 @@ when the artifact was written. Never change either by hand.
 | `stale` | An approved dependency changed | No, until re-gated |
 | `rejected` | Human declined the phase | No, until rewritten |
 
-An artifact can be `approved` only when every dependency is `approved`. Changing an approved
-artifact marks every dependent `stale` and revokes its own approval: set its status back to
-`draft` and clear `approved_*`. `stale` keeps the content; it only loses approval.
+An artifact can be `approved` only when every dependency is `approved`. Editing an approved
+artifact revokes its approval and marks every dependent `stale`: run `funky-forge stale <phase>`.
+`stale` keeps the content; it only loses approval, so it can be approved again.
 
 ## Commands
 
@@ -62,10 +62,13 @@ artifact marks every dependent `stale` and revokes its own approval: set its sta
 | `funky-forge install [--target <agents\|claude>] [--dry-run] [--with-pointer] [--force] [--json]` | Copies the pack into `.agents/skills/funky-forge` or `.claude/skills/funky-forge` | `0` ok, `1` error, `2` `TARGET_AMBIGUOUS` |
 | `funky-forge init [--language <en\|es>] [--proposal-language <en\|es>] [--force] [--json]` | Creates `.funky-forge/` with templates and skeletons | `0` ok, `1` error |
 | `funky-forge check <phase> [--json] [--strict]` | Validates schema, dependencies, hash, gate report, arithmetic, consistency; read-only | `0` pass, `1` fail |
+| `funky-forge approve <phase> --by <name> [--dry-run] [--force] [--json]` | Writes `status: approved`, `approved_by`, `approved_at`, `approved_hash` after the same check `check` runs | `0` written, `1` refused |
+| `funky-forge stale <phase> [--dry-run] [--json]` | Revokes the approval and marks every existing dependent `stale` | `0` written, `1` refused |
 | `funky-forge calc [--write] [--json]` | Recomputes the estimate | `0` ok, `1` invalid input |
 
-`check --json` returns `{ ok, phase, bodyHash, errors, warnings }`. `bodyHash` is the value you
-copy into `approved_hash`; never compute it yourself. `--strict` turns warnings into errors.
+`check --json` returns `{ ok, phase, bodyHash, errors, warnings }`. `bodyHash` is the value
+`approve` writes into `approved_hash`; never compute it yourself. `--strict` turns warnings into
+errors in `check` only: a warning never blocks a write.
 
 ## Approval procedure
 
@@ -73,8 +76,8 @@ copy into `approved_hash`; never compute it yourself. `--strict` turns warnings 
 2. Reviewer gate passes and `gates/<n>-<phase>.md` exists.
 3. `check` passes again with the report on disk.
 4. Human approves.
-5. `approved_hash` ← `bodyHash` from `check --json`; `status: approved`; `approved_by`,
-   `approved_at` filled; decision appended to `decisions.md`.
+5. `funky-forge approve <phase> --by "<who>"` writes `status: approved`, `approved_by`,
+   `approved_at` and `approved_hash`; decision appended to `decisions.md`.
 
 ## If the CLI is unavailable
 

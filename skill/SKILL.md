@@ -32,7 +32,8 @@ negotiable and do not depend on the harness:
 
 1. Never advance a phase without `funky-forge check <phase>` passing and a gate report on disk.
 2. The artifact is the state. No side state file, no `context.json`; read the artifacts.
-3. Never edit an approved artifact without marking its dependents `stale`.
+3. Never edit an approved artifact without running `funky-forge stale <phase>`, which revokes the
+   approval and marks every existing dependent `stale`.
 4. Reviewers are independent, blind, and read-only. They never edit files.
 5. Every phase gets a reviewer. Depth is `light` or `deep`, chosen by explicit triggers only.
 6. The human approves every phase and accepts every risk. The price is a human decision.
@@ -72,9 +73,11 @@ One path, variable depth: every project runs the same four phases.
 7. Record `gates/<n>-<phase>.md`: verdict, depth, escalation reason, verbatim findings, `not_verified`, and `accepted_risks` if the human accepts any. One `### F<id> - Severity: <level>` heading per finding, with the decision inside that block; prefix the id with the round (`R3-F1`) when the phase is reviewed again.
 8. Run `funky-forge check <phase>` again. It must pass with the report on disk.
 9. Present the findings and the decision to the human.
-10. On approval: copy `bodyHash` from `check --json` into `approved_hash`, set `status`,
-    `approved_by`, `approved_at`, append the decision to `decisions.md`, mark dependents
-    `stale` if you edited an approved artifact.
+10. On approval: run `funky-forge approve <phase> --by "<who>"`. It writes `status: approved`,
+    `approved_by`, `approved_at` and `approved_hash`, and re-verifies the hash it wrote. Append the
+    decision to `decisions.md`. If an approved artifact changes — its own edit, or a dependency that
+    moved — run `funky-forge stale <phase>`: it rewrites the phase to `draft` with the approval keys
+    cleared and marks every existing dependent `stale`.
 
 ## Money and numbers
 

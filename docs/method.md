@@ -24,9 +24,10 @@ One path for every project; only the depth varies.
    not be verified, and the risks the human accepted.
 8. Run `check <phase>` again; it must pass with the report on disk.
 9. Present the findings and the decision to the human.
-10. On approval: copy `bodyHash` from `check --json` into `approved_hash`, set `status`,
-    `approved_by`, `approved_at`, append the decision to `decisions.md`, and mark dependents `stale`
-    if you edited an approved artifact.
+10. On approval: run `funky-forge approve <phase> --by <name>`. It refuses unless `check` would
+    pass, writes `status`, `approved_by`, `approved_at` and `approved_hash` itself, and marks the
+    dependents `stale`. Append the decision to `decisions.md`. After editing an approved artifact,
+    run `funky-forge stale <phase>` instead of hand-editing the state.
 
 Rules that are not negotiable:
 

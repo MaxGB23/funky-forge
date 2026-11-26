@@ -145,3 +145,30 @@ test('the CLI reference names exactly the markers detection checks', () => {
   const documented = new Set([...row.matchAll(/`(\.[^`]*)`/g)].map((match) => match[1].replace(/\/$/, '')));
   assert.deepEqual(documented, new Set([CLAUDE_MARKER, ...SHARED_MARKERS]));
 });
+
+test('the CLI reference documents the two write commands and the codes approve reports', () => {
+  const cli = markdown('docs/cli.md');
+  for (const heading of ['### `approve <phase>`', '### `stale <phase>`']) assert.ok(cli.includes(heading), heading);
+  for (const code of ['APPROVAL_GATE_FAILED', 'ALREADY_APPROVED', 'STATUS_NOT_APPROVABLE']) assert.ok(cli.includes(code), code);
+  const rows = cli.split('\n').filter((line) => line.startsWith('| `'));
+  for (const row of ['| `approve <phase>`', '| `stale <phase>`']) {
+    assert.ok(rows.some((line) => line.startsWith(row)), `${row} is missing from the command table`);
+  }
+});
+
+test('the shipped skill performs approval and propagation with the commands, not by editing YAML', () => {
+  const skill = markdown('skill/SKILL.md');
+  assert.ok(skill.includes('funky-forge approve <phase>'), 'SKILL.md does not name funky-forge approve');
+  assert.ok(skill.includes('funky-forge stale <phase>'), 'SKILL.md does not name funky-forge stale');
+
+  const map = markdown('skill/references/00-map.md');
+  assert.ok(map.includes('funky-forge approve <phase>'), '00-map.md does not name funky-forge approve');
+  assert.ok(map.includes('funky-forge stale <phase>'), '00-map.md does not name funky-forge stale');
+  assert.doesNotMatch(map, /set its status back to `draft` and clear `approved_\*`/, '00-map.md still tells an agent to edit the YAML by hand');
+});
+
+test('the README names the commands that write the gate', () => {
+  const readme = markdown('README.md');
+  assert.ok(readme.includes('funky-forge approve'), 'README.md does not name funky-forge approve');
+  assert.ok(readme.includes('funky-forge stale'), 'README.md does not name funky-forge stale');
+});

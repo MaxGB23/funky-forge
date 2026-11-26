@@ -26,9 +26,9 @@ File names are fixed and not configurable.
 | `depends_on` | list | the fixed matrix below |
 | `language` | string | `en`, `es`, or a BCP-47 tag |
 | `proposal_language` | string | proposal only; defaults to `language` |
-| `approved_by` | string or null | required when `approved` |
-| `approved_at` | `YYYY-MM-DD` or null | required when `approved` |
-| `approved_hash` | `sha256:<64 lowercase hex>` or null | required when `approved` |
+| `approved_by` | string or null | written by `funky-forge approve` from `--by`; required when `approved` |
+| `approved_at` | `YYYY-MM-DD` or null | written by `funky-forge approve` as the UTC date; required when `approved` |
+| `approved_hash` | `sha256:<64 lowercase hex>` or null | written by `funky-forge approve`; required when `approved` |
 | `method_version` | integer | `1` |
 
 Invalid YAML or a missing key is `FRONTMATTER_INVALID`.
@@ -44,13 +44,27 @@ Invalid YAML or a missing key is `FRONTMATTER_INVALID`.
 
 | Status | Meaning | Advancing |
 |---|---|---|
-| `draft` | Being written | No |
+| `draft` | Being written, or an approval revoked by `funky-forge stale` | No |
 | `in_review` | With the reviewer | No |
 | `approved` | Hash matches the body | Yes |
 | `stale` | A dependency changed after approval | No (`STALE_ARTIFACT`) |
 | `rejected` | The human said no | No, until rewritten |
 
 An artifact cannot be `approved` while a dependency is not (`DEPENDENCY_NOT_APPROVED`).
+
+## Approval and revocation
+
+`funky-forge approve <phase> --by "<who>"` writes the approval: `status: approved`, the approver, the
+UTC date, and the `approved_hash` the same evaluation computed over the normalized body. It refuses on
+any error the evaluation reports except `APPROVED_CONTENT_CHANGED` and `STALE_ARTIFACT`, which are the
+two states re-approving clears. The write touches only those four keys, and the file is read back and
+the hash re-verified before the command reports success. Nothing writes the approval keys by hand any
+more.
+
+`funky-forge stale <phase>` revokes: `status: draft` with the three `approved_*` keys removed, and
+every existing dependent marked `status: stale`, transitively. A dependent already `stale` is left
+alone and an absent one is skipped. A `stale` artifact kept its content and lost only its approval,
+which is why it can be approved again.
 
 ## Normalized body and `approved_hash`
 
@@ -63,8 +77,8 @@ An artifact cannot be `approved` while a dependency is not (`DEPENDENCY_NOT_APPR
 5. keep exactly one trailing LF;
 6. keep the `calc` markers and their content.
 
-`check --json` returns `bodyHash`; copy that value into `approved_hash` at approval. Never compute it
-by hand. A mismatch while `approved` is `APPROVED_CONTENT_CHANGED`.
+`check --json` returns `bodyHash` and `funky-forge approve` writes it into `approved_hash`; never
+compute it by hand. A mismatch while `approved` is `APPROVED_CONTENT_CHANGED`.
 
 ## Required sections
 

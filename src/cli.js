@@ -6,9 +6,11 @@
 import { readFileSync } from 'node:fs';
 
 import { calc } from './commands/calc.js';
+import { approve } from './commands/approve.js';
 import { check } from './commands/check.js';
 import { init } from './commands/init.js';
 import { install } from './commands/install.js';
+import { stale } from './commands/stale.js';
 import { CliError, EXIT, fail } from './lib/errors.js';
 
 /**
@@ -34,6 +36,19 @@ const COMMANDS = {
     positionals: '<phase>',
     flags: { json: 'boolean', strict: 'boolean', help: 'boolean' },
   },
+  approve: {
+    summary: 'write the approval a passing gate earned: status, approver, date and body hash',
+    positionals: '<phase>',
+    flags: { by: 'value', 'dry-run': 'boolean', force: 'boolean', json: 'boolean', help: 'boolean' },
+    // `--force` is shared with install and init, where it means something else; only the summary
+    // is overridden, so `install --help` keeps the sentence it already had.
+    flagSummaries: { force: 're-date an already approved artifact; never bypasses the gate' },
+  },
+  stale: {
+    summary: 'revoke an approval and mark every existing dependent stale',
+    positionals: '<phase>',
+    flags: { 'dry-run': 'boolean', json: 'boolean', help: 'boolean' },
+  },
   calc: {
     summary: 'recompute hours and price from the blocks in estimate.md',
     positionals: '',
@@ -52,6 +67,7 @@ const FLAG_SPECS = {
   language: { value: '<en|es>', summary: 'language for internal artifacts' },
   'proposal-language': { value: '<en|es>', summary: 'language for the client proposal only; defaults to the artifact language' },
   strict: { summary: 'treat warnings as errors' },
+  by: { value: '<name>', summary: 'the human who approved this phase; written to approved_by' },
   write: { summary: 'rewrite the table between the calc markers' },
   help: { summary: 'show this help' },
 };
@@ -101,7 +117,8 @@ export function commandHelp(command) {
   for (const [name, kind] of Object.entries(spec.flags)) {
     const flagSpec = FLAG_SPECS[name];
     const label = kind === 'value' ? `--${name} ${flagSpec?.value ?? '<value>'}` : `--${name}`;
-    lines.push(`  ${label.padEnd(28)} ${flagSpec?.summary ?? ''}`.trimEnd());
+    const summary = spec.flagSummaries?.[name] ?? flagSpec?.summary ?? '';
+    lines.push(`  ${label.padEnd(28)} ${summary}`.trimEnd());
   }
   lines.push('', EXIT_LINE);
   return lines.join('\n');
@@ -123,6 +140,9 @@ export function helpProblems() {
       if (!flagSpec) problems.push(`flag --${name} of ${command} has no FLAG_SPECS entry`);
       else if (typeof flagSpec.summary !== 'string' || flagSpec.summary.trim() === '') problems.push(`flag --${name} has no summary`);
       else if (kind === 'value' && typeof flagSpec.value !== 'string') problems.push(`value flag --${name} has no placeholder`);
+    }
+    for (const name of Object.keys(spec.flagSummaries ?? {})) {
+      if (!Object.hasOwn(spec.flags, name)) problems.push(`command ${command} summarizes --${name}, which it does not declare`);
     }
   }
   for (const name of Object.keys(FLAG_SPECS)) {
@@ -195,6 +215,8 @@ async function dispatch(command, positionals, flags, io) {
   if (command === 'init') return init({ cwd: io.cwd, flags, stdout: io.stdout, stderr: io.stderr });
   if (command === 'calc') return calc({ cwd: io.cwd, flags, stdout: io.stdout, stderr: io.stderr });
   if (command === 'check') return check({ cwd: io.cwd, phase: positionals[0], flags, stdout: io.stdout, stderr: io.stderr });
+  if (command === 'approve') return approve({ cwd: io.cwd, phase: positionals[0], flags, stdout: io.stdout, stderr: io.stderr });
+  if (command === 'stale') return stale({ cwd: io.cwd, phase: positionals[0], flags, stdout: io.stdout, stderr: io.stderr });
   if (command === 'check' && positionals.length === 0) {
     throw fail('PHASE_REQUIRED', 'check needs a phase: problem, design, estimate, or proposal');
   }

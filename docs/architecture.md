@@ -38,7 +38,7 @@ you ──conversation──▶ orchestrator agent
                                                           ▼
                                               you: approve or iterate
                                                           │
-                        approval copies `bodyHash` into `approved_hash`
+                        funky-forge approve problem --by "you"
                                                           ▼
                                         next phase may start
 ```
@@ -63,8 +63,8 @@ Each artifact declares its dependencies in frontmatter, and the matrix is fixed:
 | `proposal.md` | `[problem, design, estimate]` | `gates/4-proposal.md` |
 
 Editing an approved artifact does not silently propagate: the hash no longer matches, `check` fails
-with `APPROVED_CONTENT_CHANGED`, and the orchestrator marks dependents `stale`. The rule is "the
-artifact is the state", never a side file.
+with `APPROVED_CONTENT_CHANGED`, and `funky-forge stale <phase>` revokes the approval and marks every
+existing dependent `stale`. The rule is "the artifact is the state", never a side file.
 
 ## Who decides what
 
@@ -83,8 +83,12 @@ approve.
 funky-forge/
   bin/funky-forge.js        entry point: exit code only, no logic
   src/cli.js                command table, argument parsing, generated help
-  src/commands/             install, init, check, calc
+  src/commands/             install, init, check, approve, stale, calc
   src/lib/                  parsers, artifact rules, estimate math, cross-checks, gate rules
+  src/lib/evaluate.js       the one evaluation check renders and approve refuses on
+  src/commands/check.js     renders that evaluation; read-only, and the only home of --strict
+  src/commands/approve.js   writes the approval the evaluation allows, then re-verifies the hash
+  src/commands/stale.js     revokes an approval and propagates staleness to every existing dependent
   skill/                    the method pack, copied verbatim by install
     SKILL.md                the only registered skill
     references/             phase contracts, review contract, schemas
@@ -122,9 +126,11 @@ show for it.
 
 1. **One command only reads.** `check` never writes; there is no `--fix`. A validator that mutates
    state can revoke approvals silently.
-2. **Two writers, both bounded.** `install` writes only inside the target skill directory, replaces a
+2. **Four writers, all bounded.** `install` writes only inside the target skill directory, replaces a
    copy that differs only after an answer or `--force`, and touches `AGENTS.md`/`CLAUDE.md` only with
-   `--with-pointer`. `calc --write` rewrites only the region between the calc markers.
+   `--with-pointer`. `calc --write` rewrites only the region between the calc markers. `approve` writes
+   the four approval keys over an artifact the evaluation passed. `stale` writes a status and the
+   approval keys: it never touches a body or a gate report.
 3. **The hash is the approval.** `approved_hash` is the SHA-256 of the normalized body, so an edit
    after approval is detectable without trusting anyone's memory.
 4. **One question, and only with a terminal.** `install` reads stdin only when it is a terminal,

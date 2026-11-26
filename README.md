@@ -27,7 +27,7 @@ Zero dependencies, nothing to build. The second line is what lets an agent run t
   `.funky-forge/` next to your code.
 - **An independent reviewer per phase**: read-only, in its own session, blind to your conversation.
 - **A deterministic check**: schema, dependency chain, approval hash, arithmetic, component coverage,
-  gate reports. `check` either passes or names the file and the field.
+  gate reports; `approve` writes the approval and `stale` propagates a revocation.
 - **A price with its arithmetic shown**: PERT hours per work block, contingency and margin with
   stated reasons, a range, and a monthly cost kept out of the price.
 
@@ -123,11 +123,11 @@ pnpm add --global link:./funky-forge   # symlinks the clone; edits show up immed
 funky-forge init --language en --proposal-language es
 # ... write .funky-forge/brief.md, then:
 funky-forge check problem              # must pass before the gate
-funky-forge check problem --json       # bodyHash, errors, warnings
-# ... write .funky-forge/design.md and approve it, then:
+funky-forge approve problem --by "you" # writes status, approver, date and body hash
+# ... write .funky-forge/design.md, then:
 funky-forge check design               # estimate depends on an approved design
+funky-forge stale problem              # revoke an approval and mark every dependent stale
 funky-forge calc --write               # needs assumptions.hourly_rate and the first work blocks
-funky-forge check estimate --strict
 ```
 
 ## 📚 Documentation

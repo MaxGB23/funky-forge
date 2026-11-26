@@ -2,7 +2,7 @@
 
 This page is the policy a reviewer applies and a contributor can read before writing a test.
 Every rule below is stated **true of this suite as it stands**, measured at the commit that
-carries this page — 24 test files, 4968 lines, 292 tests, `fail 0`, `skipped 0` on a green
+carries this page — 26 test files, 6020 lines, 332 tests, `fail 0`, `skipped 0` on a green
 run of `node --test`.
 Where the suite violates a rule, the violation is named in [Debt](#debt-not-precedent) with a
 `path:line`, as debt, not precedent.
@@ -27,7 +27,7 @@ A test is owed when something a caller can observe moves: a new exit code or mes
 changed flag, a different artifact written, a gate that now blocks, a packed file set that
 changed. The test asserts the observable — the exit code and the printed bytes, the tree
 after the command — not the internals that produced them. `src/lib/` modules are pinned
-through their exports, which is their public surface: 13 of the 24 test files import from
+through their exports, which is their public surface: 15 of the 26 test files import from
 `src/lib/`, the code commands and scripts reuse.
 
 ## When a test is not required
@@ -46,9 +46,12 @@ closes the defect, not as a ritual apology.
 3. **It asserts every observable effect.** Exit code, printed bytes when bytes are the
    subject, tree state when a command writes. A rule's own file asserts the verdict *and*
    the message.
-4. **It is deterministic.** Measured: zero files under `tests/` or `src/` use a clock, a
-   calendar date, or a random draw (`grep -rlE "Date\.now|new Date\(|Math\.random" tests/ src/`
-   returns nothing). Where behaviour needs time, the time is passed in.
+4. **It is deterministic.** Measured: no file under `tests/` or `src/` reads the wall clock, and
+   none draws a random number (`grep -rlE "Date\.now|new Date\(|Math\.random" tests/ src/` returns
+   `tests/approve.test.js` and `src/commands/approve.js`, and both name a **fixed instant passed
+   in**: the command takes a `now` and the test hands it `2026-03-01T12:00:00Z`). Where behaviour
+   needs time, the time is passed in. The one test that computes `new Date(instant)` does so to
+   print what a *local*-date implementation would say, which is how the UTC assertion can fail.
 5. **It is named for the contract**, so a red name says which promise broke without opening
    the file.
 
