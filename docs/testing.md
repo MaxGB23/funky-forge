@@ -90,7 +90,7 @@ The suite's weakest assertions, named, not hidden:
   no `floor`: the floor the test believes it set comes from `snapshot`, defaulting to `[]`. Run `1001` is
   absent from both cases because no list ever carries it, so the comment's premise at `:418` — that the
   `opened` run is the floor — is enforced by nothing. The assertion at `:441` holds; the reason given for it
-  does not. Its test arrives with the fix, per the rule above, and neither is scheduled yet.
+  does not. Its test arrives with the fix, per `When a test is not required`, and neither is scheduled yet.
 
 ## Refused, with the reason
 
