@@ -73,10 +73,14 @@ jobs:
   # Never `-latest` (see tests/ci.test.js) and never `-large`, which is a
   # larger runner rather than a standard one.
   test-macos:
-    # This job declares a name because it is outside the matrix: there is nothing to compose one
-    # from, so GitHub would render the bare id `test-macos` and the check list would say nothing
-    # about the platform or the Node line. The job id stays `test-macos` on purpose — that is what
-    # `scripts/wait-for-ci.js` and `tests/ci.test.js` read — and the rendered name is for people.
+    # Named because it is outside the matrix: nothing composes a name for it, so GitHub renders the
+    # bare id `test-macos` and the check list says nothing about the platform or the Node line it ran.
+    # The id stays `test-macos`: `scripts/wait-for-ci.js` decides on a job's conclusion and only prints
+    # its `name`, and `tests/ci.test.js` addresses the job by id. The rendered string is also what a
+    # future branch protection rule would match — the claim the `test` job's comment makes about its
+    # composed name — so it moves whenever the runner label or the Node line moves. The case deriving
+    # it from both is what turns that move into a red test here, instead of a required check that
+    # stops matching in silence.
     name: test-macos (macos-26 arm64, node 24)
     runs-on: macos-26
     steps:

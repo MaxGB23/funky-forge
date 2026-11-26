@@ -186,11 +186,15 @@ test('the macOS job is named for the runner and Node line it declares', () => {
     'string',
     'the macOS job declares no name, so GitHub renders the bare id in the check list',
   );
-  // Bounded, never `includes`: `macos-26` is a prefix of `macos-26-intel`, and a name that still says
-  // `node 24` contains `26` the moment the runner is `macos-26` — a bare substring test passes on exactly
-  // the drift it exists to catch.
+  // Bounded, never `includes`: a name still saying `node 24` contains `26` the moment the runner is
+  // `macos-26`, and a name that over-specifies the runner contains it when the label moves back — a bare
+  // substring test passes on the drifts it exists to catch, in the direction the strings collide.
   assert.match(job.name, new RegExp(`\\(${runner}(?: |\\))`), `the name '${job.name}' does not say which runner it runs on (${runner})`);
   assert.match(job.name, new RegExp(`node ${node}\\)`), `the name '${job.name}' does not say which Node line it runs (${node})`);
+  // `arm64` is the one fact in the rendered name the job does not carry: GitHub documents `macos-26` as
+  // arm64 and `macos-26-intel` as the x64 label, so the architecture is asserted as a literal while the
+  // other two are derived. Without it, a name that lies about architecture passes every case here.
+  assert.match(job.name, / arm64,/, `the name '${job.name}' does not name the architecture its runner label carries`);
 });
 
 test('every issue form parses and declares the fields GitHub requires', () => {
