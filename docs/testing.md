@@ -2,7 +2,7 @@
 
 This page is the policy a reviewer applies and a contributor can read before writing a test.
 Every rule below is stated **true of this suite as it stands**, measured at the commit that
-carries this page — 24 test files, 4876 lines, 289 tests, `fail 0`, `skipped 0` on a green
+carries this page — 24 test files, 4903 lines, 290 tests, `fail 0`, `skipped 0` on a green
 run of `node --test`.
 Where the suite violates a rule, the violation is named in [Debt](#debt-not-precedent) with a
 `path:line`, as debt, not precedent.
@@ -52,6 +52,21 @@ closes the defect, not as a ritual apology.
 5. **It is named for the contract**, so a red name says which promise broke without opening
    the file.
 
+## A double is a witness only for what it records
+
+A test that hands work to a stand-in — a fake host, a scripted `gh` — proves what the stand-in answers
+and nothing about the arguments the stand-in ignores. When a double drops an input, the test still passes
+the value and still names the contract, and it stays green when the code stops supplying that value. It is
+green because the input was discarded, not because the code still passes it: admission test 2 applied to
+the instrument instead of the subject, since a test cannot fail for a reason its double never sees.
+
+The rule: a double records every input the assertion claims to observe, and the assertion reads what the
+double recorded, never the value the test itself has just passed in.
+
+Measured by reading rather than by a command, which is the admission the section below already makes about
+"same contract": one test in this suite hands an input to a double that never reads it, and that test is
+named under [Debt](#debt-not-precedent).
+
 ## Two tests may not own the same contract
 
 The second test on one contract is deleted or narrowed to the part it alone observes.
@@ -71,6 +86,11 @@ The suite's weakest assertions, named, not hidden:
 - `tests/docs.test.js` did not read `AGENTS.md`, so the paths map had no forcing function.
   That debt is closed by this change: the map's rows are now asserted to exist
   (`tests/docs.test.js`, "every path named in the AGENTS.md map exists").
+- `tests/open-pr.test.js:426,447` pass `floor: [opened]` to the `gh` double defined at `:42`, which accepts
+  no `floor`: the floor the test believes it set comes from `snapshot`, defaulting to `[]`. Run `1001` is
+  absent from both cases because no list ever carries it, so the comment's premise at `:418` — that the
+  `opened` run is the floor — is enforced by nothing. The assertion at `:441` holds; the reason given for it
+  does not. Its test arrives with the fix, per the rule above, and neither is scheduled yet.
 
 ## Refused, with the reason
 
