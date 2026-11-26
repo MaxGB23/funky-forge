@@ -5,3 +5,6 @@ coverage/
 *.log
 .env
 .DS_Store
+
+# Parent scratch for funky-judge rounds: proves ordering, never proves a judge ran
+.judge/
