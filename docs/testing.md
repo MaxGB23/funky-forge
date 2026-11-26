@@ -64,8 +64,8 @@ The rule: a double records every input the assertion claims to observe, and the 
 double recorded, never the value the test itself has just passed in.
 
 Measured by reading rather than by a command, which is the admission the section below already makes about
-"same contract": one test in this suite hands an input to a double that never reads it, and that test is
-named under [Debt](#debt-not-precedent).
+"same contract": no double in this suite drops an input its case asserts. The one that did is named under
+[Debt](#debt-not-precedent), closed by #63.
 
 ## Two tests may not own the same contract
 
