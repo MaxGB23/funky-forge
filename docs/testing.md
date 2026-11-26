@@ -2,7 +2,7 @@
 
 This page is the policy a reviewer applies and a contributor can read before writing a test.
 Every rule below is stated **true of this suite as it stands**, measured at the commit that
-carries this page — 24 test files, 4903 lines, 290 tests, `fail 0`, `skipped 0` on a green
+carries this page — 24 test files, 4968 lines, 292 tests, `fail 0`, `skipped 0` on a green
 run of `node --test`.
 Where the suite violates a rule, the violation is named in [Debt](#debt-not-precedent) with a
 `path:line`, as debt, not precedent.
@@ -86,11 +86,10 @@ The suite's weakest assertions, named, not hidden:
 - `tests/docs.test.js` did not read `AGENTS.md`, so the paths map had no forcing function.
   That debt is closed by this change: the map's rows are now asserted to exist
   (`tests/docs.test.js`, "every path named in the AGENTS.md map exists").
-- `tests/open-pr.test.js:426,447` pass `floor: [opened]` to the `gh` double defined at `:42`, which accepts
-  no `floor`: the floor the test believes it set comes from `snapshot`, defaulting to `[]`. Run `1001` is
-  absent from both cases because no list ever carries it, so the comment's premise at `:418` — that the
-  `opened` run is the floor — is enforced by nothing. The assertion at `:441` holds; the reason given for it
-  does not. Its test arrives with the fix, per `When a test is not required`; the fix waits on #63.
+- `tests/open-pr.test.js` passed `floor: [opened]` to a `gh` double whose signature had no `floor`, so the
+  premise its comment stated — that the `opened` run is the floor — was enforced by nothing, and the assertion
+  held for a reason no reader could check. That debt is closed by #63: the double serves the floor it is
+  handed, and one case returns run `1001` from every read, so its exclusion can only come from the floor.
 
 ## Refused, with the reason
 
