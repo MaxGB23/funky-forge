@@ -476,7 +476,8 @@ test('the run at the floor is excluded by the floor, not by the list it came bac
   // Both reads return the `opened` run, so nothing about the lists can explain its exclusion: 1001 is
   // dropped because the floor is its own id, and 1002 is the only run the creation fired. Without a
   // floor the same two reads make 1001 a candidate and it is the one viewed first, so this case fails
-  // if `floor` stops being served — which is what the case above could not say, its floor answer empty.
+  // if `floor` stops being served. The case above could not say that while the double dropped the
+  // value: its floor answer was empty for a reason no assertion there could see.
   const opened = { databaseId: 1001, headSha: SHA, status: 'completed', conclusion: 'success' };
   const deciding = { databaseId: 1002, headSha: SHA, status: 'completed', conclusion: 'success' };
   const { exec, calls } = gh({ floor: [opened], runs: [opened, deciding] });
