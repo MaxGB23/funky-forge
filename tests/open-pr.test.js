@@ -38,8 +38,12 @@ function capture() {
  *
  * `runs` is either the one answer every poll gets, or one answer per poll, the last one repeating:
  * `[[], [decided]]` is a run that is not visible yet and then is.
+ *
+ * The floor read serves `floor` when the case names one and `snapshot` otherwise. A case that needs a run
+ * to sit *at* the floor returns it there: the floor is the greatest id of the commit in that answer, so a
+ * run the command must exclude has to be in a list this double actually serves, never only in a comment.
  */
-function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snapshot = [], runs = [], floorRead = null, conclusion = 'success', jobs = null, watch = {}, views = {}, existing = [], prListRead = null } = {}) {
+function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snapshot = [], floor = null, runs = [], floorRead = null, conclusion = 'success', jobs = null, watch = {}, views = {}, existing = [], prListRead = null } = {}) {
   const calls = [];
   const seen = [];
   // What the API has said about each run id so far, so `run view` answers what the list said about that
@@ -76,11 +80,12 @@ function gh({ create = 'https://github.com/MaxGB23/funky-forge/pull/42\n', snaps
     }
     if (group === 'run' && action === 'list') {
       lists += 1;
-      // The first read is the floor, taken before a pull request exists; a non-null `floorRead` is that
-      // read failing, which is a refusal and not a pull request to repair afterwards.
+      // The first read is the floor, taken before a pull request exists: it answers `floor` when the case
+      // named one and `snapshot` otherwise. A non-null `floorRead` is that read failing, which is a
+      // refusal and not a pull request to repair afterwards.
       if (lists === 1) {
         return floorRead === null
-          ? { ok: true, stdout: JSON.stringify(remember(snapshot)), stderr: '' }
+          ? { ok: true, stdout: JSON.stringify(remember(floor ?? snapshot)), stderr: '' }
           : { ok: false, stdout: '', stderr: 'gh: not logged in' };
       }
       return { ok: true, stdout: JSON.stringify(remember(poll(lists - 2))), stderr: '' };
@@ -465,6 +470,29 @@ test('the run of this event decides once its id is past the floor', async (t) =>
   assert.equal(redCode, RED, 'a failed job in the deciding run is a failed pull request');
   assert.match(String(redGh.calls.find((call) => call.startsWith('run view'))), /^run view 1002 /);
   assert.ok(!redGh.calls.some((call) => call.startsWith('run watch')), 'a concluded red is never waited for');
+});
+
+test('the run at the floor is excluded by the floor, not by the list it came back in', async (t) => {
+  // Both reads return the `opened` run, so nothing about the lists can explain its exclusion: 1001 is
+  // dropped because the floor is its own id, and 1002 is the only run the creation fired. Without a
+  // floor the same two reads make 1001 a candidate and it is the one viewed first, so this case fails
+  // if `floor` stops being served. The case above could not say that while the double dropped the
+  // value: its floor answer was empty for a reason no assertion there could see.
+  const opened = { databaseId: 1001, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const deciding = { databaseId: 1002, headSha: SHA, status: 'completed', conclusion: 'success' };
+  const { exec, calls } = gh({ floor: [opened], runs: [opened, deciding] });
+  const { out, err, deps } = frontHalf(t, { exec });
+
+  assert.equal(await run(deps), GREEN, err.text);
+
+  const viewed = calls.filter((call) => call.startsWith('run view'));
+  assert.match(String(viewed[0]), /^run view 1002 /, 'the run past the floor is the only one read');
+  assert.ok(
+    !viewed.some((call) => call.startsWith('run view 1001 ')),
+    'the run at the floor is never viewed, though every poll returned it',
+  );
+  assert.match(out.text, /open-pr: run 1002 {2}· {2}passed/, 'and the verdict names only that run');
+  assert.doesNotMatch(out.text, /open-pr: run 1001/, 'the run at the floor is not in the verdict either');
 });
 
 test('a set still growing when the budget runs out is unknown, and names what it saw', async (t) => {
