@@ -110,8 +110,8 @@ and becomes a test.
 | T6 | S9 | `docs/cli.md`, `docs/artifacts.md`, `docs/architecture.md`, `docs/method.md`, `docs/testing.md`, `skill/SKILL.md`, `skill/references/00-map.md`, `README.md`, in the same commit as the behaviour they describe | `3f49082` |
 | T7 | S1-S9 | `tests/approve.test.js`, `tests/stale.test.js`, and the two that turned the prose into a gate: `tests/cli.test.js` and `tests/docs.test.js`. The S9 fixture matrix was a scratch script outside the repository: it was never committed, nothing in the tree replays it, and a reader can re-run the shipped tests but not the differential | `3f49082` |
 | J1 | S1-S10 | Blind `PAIR`. Round 1 refuted v1 (`L4`), round 2 refuted v2 and one premise of mine (`L6`). The round cap is spent; v3 stands on the parent's own reads | done, cap spent |
-| J2 | S1-S9 | Blind `PAIR` once the change's claims are about to be believed | pending |
-| J3 | S1-S9 | `SINGLE` closing audit, once every `T*` row is `done` | pending |
+| J2 | S1-S9 | Blind `PAIR` over the change. Round 1 refuted the prose that teaches the rule; round 2 refuted the corrections' own citations and two more surfaces | done, 2 rounds + 1 faulted launch |
+| J3 | S1-S9 | `SINGLE` closing audit, once every `T*` row is `done` | **not run — environment fault, see `L11`** |
 
 ## Deferred, with an owner
 
@@ -273,3 +273,16 @@ and becomes a test.
   - The round cap for this artifact is now spent (two judged rounds, plus one faulted launch that spends
     none). What stands is recorded above with the commands that produced it: `node --test` 332 tests, 332
     pass, 0 fail, 0 skipped; `npm run pack:check` 42 packed files against 6 entries, exit 0.
+
+- **L11** — **`J3` could not run, and this is a fault, not a pass.** Two launches failed. The first returned
+  no report at all ("assistant settled without a final report"), which under rule 11 is neither a pass nor a
+  finding. The second was refused outright: `subagent_list_agents` now returns "No subagents defined", so
+  `jd-judge-a` does not resolve and no judge in this family can be dispatched from this session. Two faulted
+  attempts is where rule 11 hands the checkpoint to a human rather than to a third try, and a registry with
+  no agents would fail the third the same way.
+  What this leaves: the closing audit's **delivery** question is unanswered by an independent reader. The
+  gate it would have re-run is answered, because the parent runs gates and a judge certifies none: at
+  `e6541cb`, `node --test` reports 332 tests, 332 pass, 0 fail, 0 skipped, and `npm run pack:check` reports
+  42 packed files against 6 entries, exit 0. What is *not* established is the audit's product — the reading a
+  stranger gets, and whatever the record fails to name — and no sentence in this record claims it is.
+  `J3` stays open for the next session that has a judge registry.
