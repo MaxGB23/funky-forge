@@ -100,3 +100,10 @@ resume by having the author review the author's work and publishing the result a
   The README's 170-line cap (`tests/docs.test.js:116`) is not touched by this feature.
 - **L5** — Issue #72 opened (`type:docs`, feature-request form, no duplicate among the open issues) and
   read back confirmed from the target host.
+
+- **L6** — Second constraint on resumption, found while checking what the run needs: `approve` and `stale`
+  exist only on `feat/approve-writes-the-gate` (issue #71), not on `main`. So `T2` and the phase-1 work can
+  start from `main`, and `T4`/`T5` cannot: the scenario's premise is a revised approval, and the commands
+  that revise it are not there yet. The run follows issue #71 into `main`, or happens on a branch that
+  carries it — in that order, because a validation of commands that are not merged is a validation of
+  nothing a user can run.
