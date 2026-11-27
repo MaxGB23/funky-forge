@@ -52,7 +52,8 @@ when the artifact was written. Never change either by hand.
 | `rejected` | Human declined the phase | No, until rewritten |
 
 An artifact can be `approved` only when every dependency is `approved`. Editing an approved
-artifact revokes its approval and marks every dependent `stale`: run `funky-forge stale <phase>`.
+artifact revokes its approval and marks every approved dependent `stale`, leaving one that was never
+approved untouched: run `funky-forge stale <phase>`.
 `stale` keeps the content; it only loses approval, so it can be approved again.
 
 ## Commands
@@ -63,7 +64,7 @@ artifact revokes its approval and marks every dependent `stale`: run `funky-forg
 | `funky-forge init [--language <en\|es>] [--proposal-language <en\|es>] [--force] [--json]` | Creates `.funky-forge/` with templates and skeletons | `0` ok, `1` error |
 | `funky-forge check <phase> [--json] [--strict]` | Validates schema, dependencies, hash, gate report, arithmetic, consistency; read-only | `0` pass, `1` fail |
 | `funky-forge approve <phase> --by <name> [--dry-run] [--force] [--json]` | Writes `status: approved`, `approved_by`, `approved_at`, `approved_hash` after the same check `check` runs | `0` written, `1` refused |
-| `funky-forge stale <phase> [--dry-run] [--json]` | Revokes the approval and marks every existing dependent `stale` | `0` written, `1` refused |
+| `funky-forge stale <phase> [--dry-run] [--json]` | Revokes the approval and marks every approved dependent `stale`; a never-approved one is left untouched and reported `unchanged` | `0` written, `1` refused |
 | `funky-forge calc [--write] [--json]` | Recomputes the estimate | `0` ok, `1` invalid input |
 
 `check --json` returns `{ ok, phase, bodyHash, errors, warnings }`. `bodyHash` is the value

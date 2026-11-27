@@ -18,7 +18,7 @@ funky-forge --version
 | `init` | Create `.funky-forge/` from the shipped templates | `--language <en\|es>`, `--proposal-language <en\|es>`, `--force`, `--json` |
 | `check <phase>` | Validate one phase; read-only | `--json`, `--strict` |
 | `approve <phase>` | Write the approval a passing gate earned | `--by <name>`, `--dry-run`, `--force`, `--json` |
-| `stale <phase>` | Revoke an approval and mark its existing dependents stale | `--dry-run`, `--json` |
+| `stale <phase>` | Revoke an approval and mark its approved dependents stale | `--dry-run`, `--json` |
 | `calc` | Recompute hours and price from the blocks | `--write`, `--json` |
 
 ### `install`
@@ -149,13 +149,16 @@ funky-forge approve - problem
 ### `stale <phase>`
 
 Revokes an approval and propagates it: the phase becomes `status: draft` with `approved_by`,
-`approved_at` and `approved_hash` removed, and every **existing** dependent is marked `status: stale`,
-transitively over the dependency chain. Gate reports are never touched and no body is edited — the
-recovery for a mistaken run is the repository's own history.
+`approved_at` and `approved_hash` removed, and every **approved** dependent is marked `status: stale`,
+transitively over the dependency chain. A dependent that was never approved holds no approval to
+lose, so it is left byte-identical and reported as `unchanged` with the status it kept. Gate reports
+are never touched and no body is edited — the recovery for a mistaken run is the repository's own
+history.
 
 | Case | Result |
 |---|---|
-| Dependent exists, not stale | written as `stale`, keeping its content and its approval record |
+| Dependent is `approved` | written as `stale`, keeping its content and its approval record |
+| Dependent was never approved | left untouched and reported `unchanged` with the status it kept |
 | Dependent already `stale` | left untouched and not counted as changed |
 | Dependent absent | skipped and reported; there is nothing to mark |
 | A target that will be written does not parse | everything aborts before the first write, exit `1` |

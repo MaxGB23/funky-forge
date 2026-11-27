@@ -33,7 +33,7 @@ negotiable and do not depend on the harness:
 1. Never advance a phase without `funky-forge check <phase>` passing and a gate report on disk.
 2. The artifact is the state. No side state file, no `context.json`; read the artifacts.
 3. Never edit an approved artifact without running `funky-forge stale <phase>`, which revokes the
-   approval and marks every existing dependent `stale`.
+   approval and marks every approved dependent `stale`.
 4. Reviewers are independent, blind, and read-only. They never edit files.
 5. Every phase gets a reviewer. Depth is `light` or `deep`, chosen by explicit triggers only.
 6. The human approves every phase and accepts every risk. The price is a human decision.
@@ -77,7 +77,8 @@ One path, variable depth: every project runs the same four phases.
     `approved_by`, `approved_at` and `approved_hash`, and re-verifies the hash it wrote. Append the
     decision to `decisions.md`. If an approved artifact changes — its own edit, or a dependency that
     moved — run `funky-forge stale <phase>`: it rewrites the phase to `draft` with the approval keys
-    cleared and marks every existing dependent `stale`.
+    cleared and marks every approved dependent `stale`. A dependent that was never approved holds no
+    approval to lose, so it is left untouched and reported `unchanged`.
 
 ## Money and numbers
 

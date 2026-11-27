@@ -2,7 +2,7 @@
 
 Feature document for issue #71 (`feat: approve writes the gate, so approval stops being a hand-copied
 hash`). The CLI implements the read half of the gate rule and almost none of the write half. Nothing in
-`src/` sets `status: stale`, so `STALE_ARTIFACT` (`src/commands/check.js:57-58`) has no producer; the one
+`src/` sets `status: stale`, so `STALE_ARTIFACT` (`src/lib/evaluate.js:46-48`) has no producer; the one
 existing producer of `APPROVED_CONTENT_CHANGED` is `calc --write` (`src/commands/calc.js:71-74`), which
 rewrites the estimate body, prints a warning and leaves `status: approved` in place — and no command can
 repair either state. Approval itself is a `sha256:` digest transcribed by hand. This plan was judged `J1`
@@ -10,7 +10,7 @@ over three revisions before the first source write; the adjudications are in `##
 
 Method source: the RFC's own decision (`rfcs/funky-forge-skill-pack-rfc.md:1259`, Q2: `check` stays
 read-only, "a separate `funky-forge stale` command may be added later") and the rule the docs already state
-(`docs/cli.md:66-67`, `skill/SKILL.md:75-77`, `skill/references/00-map.md:54-56`). No rule is invented here:
+(`docs/cli.md:66-67`, `skill/SKILL.md:76-80`, `skill/references/00-map.md:54-56`). No rule is invented here:
 every clause quotes one of those sources or the issue body, and where a decision has no source it says so
 and becomes a test.
 
@@ -19,14 +19,14 @@ and becomes a test.
 - **S1 — `approve` writes the approved state, and only as a verdict.** `funky-forge approve <phase>` runs the
   shared evaluation and refuses with exit `1` on any error **except the two states the command exists to
   clear**: `APPROVED_CONTENT_CHANGED` and `STALE_ARTIFACT`. Everything else blocks — a missing artifact
-  (`:40-43`), invalid frontmatter (`:45-51`), a malformed gate report (`GATE_REPORT_MALFORMED`,
-  `src/lib/gate.js:62-94`), a surviving placeholder (`:61-63`), a required section absent or a cross-check
-  failure (`:65-88`), a dependency that is absent or not approved (`:146-168`). On success it writes
+  (`:29-32`), invalid frontmatter (`:34-40`), a malformed gate report (`GATE_REPORT_MALFORMED`,
+  `src/lib/gate.js:62-94`), a surviving placeholder (`:50-52`), a required section absent or a cross-check
+  failure (`:54-57`), a dependency that is absent or not approved (`:137-150`). On success it writes
   `status: approved`, `approved_by`, `approved_at` and `approved_hash`. Approval stops being a transcription
-  and becomes the same verdict `check` reaches. (Issue #71 body; `src/commands/check.js:40-88`.)
+  and becomes the same verdict `check` reaches. (Issue #71 body; `src/lib/evaluate.js`.)
 - **S2 — Two codes are new; the rest are the evaluation's.** New: `APPROVAL_GATE_FAILED`, carrying the codes
   the evaluation reported, and `ALREADY_APPROVED`, when the stored `approved_hash` already equals the live
-  body hash. `DEPENDENCY_NOT_APPROVED` already exists in the evaluation (`src/commands/check.js:153,164`) and
+  body hash. `DEPENDENCY_NOT_APPROVED` already exists in the evaluation (`src/lib/evaluate.js:138,149`) and
   `approve` reports it unchanged, message included: `does not exist` and `is "draft"; approve it first` are
   different facts on the same code. `STATUS_NOT_APPROVABLE` is the third new code and names `rejected`. Each
   is reachable by a code path a test can drive, which is the defect today. (Issue #71 body; `JD-A-002`.)
@@ -41,10 +41,10 @@ and becomes a test.
 - **S4 — The write touches the approval keys and nothing the hash sees.** Only the four keys change. A draft
   that declares none of `approved_by`, `approved_at`, `approved_hash` gets them inserted immediately after
   `status:`, in that order; keys already present keep their position and their neighbours. `approved_hash` is
-  computed over the **normalized** body via `normalizeBody` (`src/lib/frontmatter.js:65-77`), which strips
+  computed over the **normalized** body via `normalizeBody` (`src/lib/frontmatter.js:131`), which strips
   CRLF, trailing whitespace and outer blank lines — verified, not assumed: a CRLF copy of a body and its LF
   original produce the same `bodyHash`, because `splitFrontmatter` slices the normalized text
-  (`src/lib/frontmatter.js:55`) rather than the raw one. Two limits are stated here so no test claims
+  (`src/lib/frontmatter.js:61`) rather than the raw one. Two limits are stated here so no test claims
   otherwise: a body edited only in trailing whitespace is invisible to the hash, and a Markdown hard break
   (two trailing spaces) is content the hash cannot see. The written file is re-read and `bodyHash` re-verified
   against the value just written; a mismatch fails the command instead of reporting success. (Justification:
@@ -64,12 +64,15 @@ and becomes a test.
   `JD-A-008`, `JD-B` round 2; corrected at `L8`.)
 - **S6 — One rule set, two readers, and the strictness stays in `check`.** The evaluation `check` performs
   moves into `evaluateArtifact({cwd, phase})` returning `{hash, errors, warnings}`; `check` keeps its
-  rendering, its `--strict` promotion (`src/commands/check.js:84-86`) and its exit decision, because
+  rendering, its `--strict` promotion (`src/commands/check.js:34-36`) and its exit decision, because
   strictness is a presentation choice and `approve` must never treat a warning as blocking. `approve` calls
-  the same evaluation, so the two commands cannot drift and `check` gains no write path (RFC Q2). `check`'s
-  observable behavior is unchanged: same codes, same messages, same exit codes, same JSON — proven by a
-  fixture matrix run against the parent commit, not by reading. (Adjudicated from `JD-A-004` and `JD-B-006` of
-  round 1, and `JD-A-005`/`JD-B` on `--strict` of round 2.)
+  the same evaluation, so the two commands cannot drift. That `check` gains no write path (RFC Q2) is a
+  structural fact and not an observed one: `src/commands/check.js` imports no `node:fs` at all, so no write is
+  reachable from it whatever the input. Its observable behavior is unchanged — same codes, same messages,
+  same exit codes, same JSON — which a fixture matrix run against the parent commit corroborates and no
+  more: an identical `stdout`, `stderr` and exit code can never show the absence of a write. (Adjudicated
+  from `JD-A-004` and `JD-B-006` of round 1, `JD-A-005`/`JD-B` on `--strict` of round 2, with the write-path
+  proof corrected at `JD-A-009`.)
 - **S7 — The output contract is what the sources state, and no more.** `--json` prints one object with the
   notices on stderr, following the contract `install` states at `docs/cli.md:36`; the object shapes of
   `approve` and `stale` are this feature's decision, each pinned by a test rather than generalized from
@@ -84,12 +87,13 @@ and becomes a test.
   of round 1 and `JD-A-009` of round 2.)
 - **S9 — The change ships with everything that describes it, and moves nothing else.** `docs/cli.md` gains the
   two command sections and the new codes; `docs/artifacts.md` and `docs/architecture.md` follow;
-  `skill/SKILL.md:75-77` and `skill/references/00-map.md:54-56` replace the manual ritual with the command;
+  `skill/SKILL.md:76-80` and `skill/references/00-map.md:54-56` replace the manual ritual with the command;
   `README.md` lists them. `init`, `install` and `calc` are untouched by this change, and the falsifier is a
-  **fixture matrix**, not one artifact: every refusal branch of `check` (missing artifact, invalid
-  frontmatter, stale, placeholder, missing gate report, malformed gate report, failing cross-check,
-  `--strict` over warnings, clean pass) replayed against the parent commit, comparing `stdout`, `stderr` and
-  exit code. (Adjudicated from `JD-A-010`, `JD-B-007`, `JD-B-009` of round 1 and `JD-A-010`, `JD-B` of round 2.)
+  **fixture matrix**, not one artifact: all eleven branches of `check` (no phase, unknown phase, missing
+  artifact, invalid frontmatter, stale, placeholder, missing gate report, malformed gate report, failing
+  cross-check, `--strict` over warnings, clean pass) replayed against the parent commit, comparing `stdout`,
+  `stderr` and exit code. (Adjudicated from `JD-A-010`, `JD-B-007`, `JD-B-009` of round 1 and `JD-A-010`,
+  `JD-B` of round 2; the count corrected at `JD-A-003`.)
 - **S10 — Issue first, and the label is not mine.** Issue #71 exists with `type:feature`; `status:approved` is
   a maintainer judgement no script enforces (`CONTRIBUTING.md:23-24`). Work may be built before the label and
   may not be merged without it.
@@ -99,12 +103,12 @@ and becomes a test.
 | ID | Spec | Route | Commit |
 |---|---|---|---|
 | T1 | S6 | `src/lib/evaluate.js` + `src/commands/check.js`: move the rules behind `evaluateArtifact({cwd, phase})`; `check` keeps rendering, `--strict` and the exit decision. Fixture matrix against the parent commit before and after | `5a17888` |
-| T2 | S4 | `src/lib/frontmatter.js`: a surgical writer for the four keys plus their reader, with the insertion point fixed. No serializer exists (`src/lib/yaml.js` exports `parseYaml` and `YamlError`), so the raw block is edited in place. Bind the normalized text to one name while there: `:55` re-derives `source.replace(/\r\n/g,'\n')` and reads as if it sliced the raw source (`JD-B` refuted) | `3f49082` |
+| T2 | S4 | `src/lib/frontmatter.js`: a surgical writer for the four keys plus their reader, with the insertion point fixed. No serializer exists (`src/lib/yaml.js` exports `parseYaml` and `YamlError`), so the raw block is edited in place. Bind the normalized text to one name while there: `:61` slices `normalized`, bound at `:54`; before this change the slice re-derived `source.replace(/\r\n/g,'\n')` and read as if it sliced the raw source (`JD-B` refuted) | `3f49082` |
 | T3 | S1, S2, S3, S7, S8 | `src/commands/approve.js`: evaluation precondition minus the two clearing states, the three new codes, the five-state branch, the write, the re-verification, `--dry-run`, `--json`, injectable clock | `3f49082` |
 | T4 | S5, S7 | `src/commands/stale.js`: validate existing targets, then revoke and propagate; skip absent, leave never-approved and already-stale alone; same output contract | `3f49082` |
-| T5 | S7 | `src/cli.js`: dispatch rows, flag specs and help text for both commands. The shared `--force` summary (`src/cli.js:49`) is **not** edited — `install --help` would change with it (`JD-A-010` round 1) | `3f49082` |
+| T5 | S7 | `src/cli.js`: dispatch rows, flag specs and help text for both commands. The shared `--force` summary (`src/cli.js:64`) is **not** edited — `install --help` would change with it (`JD-A-010` round 1) | `3f49082` |
 | T6 | S9 | `docs/cli.md`, `docs/artifacts.md`, `docs/architecture.md`, `docs/method.md`, `docs/testing.md`, `skill/SKILL.md`, `skill/references/00-map.md`, `README.md`, in the same commit as the behaviour they describe | `3f49082` |
-| T7 | S1-S9 | `tests/approve.test.js`, `tests/stale.test.js`, and the S9 fixture matrix | `3f49082` |
+| T7 | S1-S9 | `tests/approve.test.js`, `tests/stale.test.js`, and the two that turned the prose into a gate: `tests/cli.test.js` and `tests/docs.test.js`. The S9 fixture matrix was a scratch script outside the repository: it was never committed, nothing in the tree replays it, and a reader can re-run the shipped tests but not the differential | `3f49082` |
 | J1 | S1-S10 | Blind `PAIR`. Round 1 refuted v1 (`L4`), round 2 refuted v2 and one premise of mine (`L6`). The round cap is spent; v3 stands on the parent's own reads | done, cap spent |
 | J2 | S1-S9 | Blind `PAIR` once the change's claims are about to be believed | pending |
 | J3 | S1-S9 | `SINGLE` closing audit, once every `T*` row is `done` | pending |
@@ -115,7 +119,7 @@ and becomes a test.
   `APPROVED_CONTENT_CHANGED` and leaves `status: approved` (`src/commands/calc.js:71-74`). This feature makes
   the state repairable (`stale`, then `approve`) but does not change `calc`, because that is a behaviour
   change to a command this issue does not own. Follow-up issue.
-- **`init --help` misdescribes `--force`.** One shared summary at `src/cli.js:49`, already recorded at
+- **`init --help` misdescribes `--force`.** One shared summary at `src/cli.js:64`, already recorded at
   `odd/tasks/method-pack-version.md:106-110`. Not touched here for the same reason.
 
 ## Log
@@ -126,7 +130,9 @@ and becomes a test.
   funky judge para planes y afirmaciones, ademas de marcar en odd las fases J(n). NO OLVIDEMOS de
   actualizar docs, empecemos". Direction chosen by the user from four: **A, `approve` + `stale`**.
 - **L2** — Measured, not recalled. `node --test` → 292 tests, 292 pass, 0 fail, 0 skipped, 834 ms.
-  `node scripts/pack-guard.js` → "39 packed files against 6 entries of the files contract", exit 0. Commits
+  `node scripts/pack-guard.js` → "39 packed files against 6 entries of the files contract", exit 0. Those 39
+  **packed files** are the count before this change, against the same 6 entries; after it the same command
+  prints **42 packed files** against those 6 entries, because the three new `src/` modules ship. Commits
   since the last tag: `git rev-list --count v0.2.0..1331189^` → **73**; the same range including this
   record's own commit is **74** (`..1331189`), and both are stated because the commit decides which is true.
   `git diff --stat v0.2.0..1331189^ -- src/ skill/` prints nothing; the same range over the whole repository
@@ -180,3 +186,52 @@ and becomes a test.
   the status it kept. Pinned test-first: the new case was RED against the literal implementation (`wrote:
   .funky-forge/design.md (stale)`) and GREEN after the correction; the suite is 332 tests, 332 pass, 0 fail,
   0 skipped.
+- **L9** — **J2 round 1, blind `PAIR` over the change, adjudicated.** Artifact: the three commit messages and
+  the prose the change introduces, frozen at `9e96f93`, tree
+  `8fbec1888b35cd1c9dc23a14c84025d6f1687a14` (`git rev-parse 9e96f93^{tree}`). Judges `jd-judge-a` and
+  `jd-judge-b`, the same eleven questions. **One faulted launch is recorded, not hidden:** the first attempt at
+  judge A stopped at protocol rule 1 because the handoff carried a tree digest the parent had invented instead
+  of measured; a faulted launch spends no round (rule 11) and the round was re-dispatched against the measured
+  digest. Every `Qk` was then accounted for.
+  - **Settled, CRITICAL, both judges independently — `JD-A-001` + `JD-B-001`.** Seven surfaces still stated the
+    pre-`L8` rule: "every existing dependent is marked `stale`". The code and the pinned test say otherwise, so
+    the shipped pages would have taught an agent a rule the command does not implement. Corrected in
+    `docs/cli.md` (section and both table rows), `docs/artifacts.md`, `docs/architecture.md`,
+    `docs/method.md`, `docs/testing.md`, `skill/SKILL.md`, `skill/references/00-map.md` and
+    `skill/references/schemas/artifacts.md`. This is the finding that justified the round: the plan's own
+    correction had not reached the prose that teaches it.
+  - **`JD-A-002`, accepted, CRITICAL.** The `README.md` quick start ran `approve` and then `stale` in the same
+    copyable block, revoking the approval it had just written. `stale` left the happy path and now carries its
+    condition.
+  - **`JD-A-003` + `JD-B-004`, accepted, CRITICAL.** `T7` claimed the S9 fixture matrix shipped, and it did not:
+    it was a scratch script outside the repository, never committed, and nothing in the tree replays it. `T7`
+    now says exactly that and says what a reader can re-run. `S9` also enumerated nine branches where the run
+    had eleven; it now lists eleven, adding `no phase` and `unknown phase`. The arithmetic `11 × 2 = 22` had
+    hidden the mismatch.
+  - **`JD-A-004` + `JD-B-002`, accepted.** The record's citations pointed at code the refactor moved, several
+    of them past the end of a now-65-line `check.js`. Every citation was re-verified against `9e96f93`.
+  - **`JD-A-005`, accepted.** The page denied that anything under `src/` reads a wall clock while naming
+    `src/commands/approve.js`, whose default is `() => new Date()`. Reworded to what is true: the shipped path
+    reads a real clock, every test replaces it, and no test depends on the current time.
+  - **`JD-A-006` + `JD-B-006`, accepted.** `L6`'s "the only three `writeFileSync` sites" is false as published:
+    there are five files, and this change added two of them. `L6` stays as the historical measurement it is —
+    this log is append-only — and the count is corrected here: `init`, `install`, `calc --write`, `approve`,
+    `stale`.
+  - **`JD-A-007`, accepted.** `docs/architecture.md` counted "four writers" and omitted `init`, which
+    `docs/cli.md` names as one. It now says five and names all five.
+  - **`JD-A-008` + `JD-B-003`, accepted.** Two moved files had no row: `tests/cli.test.js` and
+    `tests/docs.test.js`. Named in `T7`.
+  - **`JD-A-009`, accepted, and it was my reasoning that was weak.** "`check` gains no write path" was offered
+    as proven by an identical `stdout`/`stderr`/exit, an observation that cannot show the absence of a write.
+    The fact that actually holds replaced it: `src/commands/check.js` imports no `node:fs` at all. The
+    differential stays as the weaker, separate claim it is.
+  - **`JD-A-010`, accepted.** Gate sentences with no command behind them: the measured numbers now name the
+    command that produced them.
+  - **`JD-B-005`, accepted.** 39 packed files against 6 entries was the count before this change and 42 is the
+    count after, because the three new `src/` modules ship. `L2` states both, with the fact that separates
+    them.
+  - **`JD-B-007`, accepted as a suggestion.** The quoted output in prose must be copied from a run rather than
+    reconstructed; the pages' examples were checked against what the commands print.
+  - After the corrections: `node --test` 332 tests, 332 pass, 0 fail, 0 skipped; `npm run pack:check` → 42
+    packed files against 6 entries, exit 0. The corrections re-entered the second and last round the cap
+    allows for this artifact, which attacks them and nothing else.

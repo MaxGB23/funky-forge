@@ -126,8 +126,8 @@ funky-forge check problem              # must pass before the gate
 funky-forge approve problem --by "you" # writes status, approver, date and body hash
 # ... write .funky-forge/design.md, then:
 funky-forge check design               # estimate depends on an approved design
-funky-forge stale problem              # revoke an approval and mark every dependent stale
 funky-forge calc --write               # needs assumptions.hourly_rate and the first work blocks
+# editing an artifact that is already approved? run funky-forge stale <phase> first
 ```
 
 ## 📚 Documentation

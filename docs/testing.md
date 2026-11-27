@@ -46,12 +46,14 @@ closes the defect, not as a ritual apology.
 3. **It asserts every observable effect.** Exit code, printed bytes when bytes are the
    subject, tree state when a command writes. A rule's own file asserts the verdict *and*
    the message.
-4. **It is deterministic.** Measured: no file under `tests/` or `src/` reads the wall clock, and
-   none draws a random number (`grep -rlE "Date\.now|new Date\(|Math\.random" tests/ src/` returns
-   `tests/approve.test.js` and `src/commands/approve.js`, and both name a **fixed instant passed
-   in**: the command takes a `now` and the test hands it `2026-03-01T12:00:00Z`). Where behaviour
-   needs time, the time is passed in. The one test that computes `new Date(instant)` does so to
-   print what a *local*-date implementation would say, which is how the UTC assertion can fail.
+4. **It is deterministic.** Measured: no test draws a random number and none depends on the current
+   time (`grep -rlE "Date\.now|new Date\(|Math\.random" tests/ src/` returns exactly
+   `src/commands/approve.js` and `tests/approve.test.js`). Those two are the same clock seen from both
+   ends: the shipped command defaults `now` to `() => new Date()`, so it writes a real date, and every
+   test hands it a **fixed instant passed in** instead — `2026-03-01T12:00:00Z` — so no outcome moves
+   with the day it runs. Where behaviour needs time, the time is passed in. The one test that computes
+   `new Date(instant)` does so to print what a *local*-date implementation would say, which is how the
+   UTC assertion can fail.
 5. **It is named for the contract**, so a red name says which promise broke without opening
    the file.
 

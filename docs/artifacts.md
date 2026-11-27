@@ -62,9 +62,10 @@ the hash re-verified before the command reports success. Nothing writes the appr
 more.
 
 `funky-forge stale <phase>` revokes: `status: draft` with the three `approved_*` keys removed, and
-every existing dependent marked `status: stale`, transitively. A dependent already `stale` is left
-alone and an absent one is skipped. A `stale` artifact kept its content and lost only its approval,
-which is why it can be approved again.
+every **approved** dependent marked `status: stale`, transitively. A dependent that was never approved
+holds no approval to lose, so it keeps its bytes and is reported `unchanged` with its status; one
+already `stale` is left alone and an absent one is skipped. A `stale` artifact kept its content and
+lost only its approval, which is why it can be approved again.
 
 ## Normalized body and `approved_hash`
 
