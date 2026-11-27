@@ -45,7 +45,7 @@ const COMMANDS = {
     flagSummaries: { force: 're-date an already approved artifact; never bypasses the gate' },
   },
   stale: {
-    summary: 'revoke an approval and mark every existing dependent stale',
+    summary: 'revoke an approval and mark its approved dependents stale',
     positionals: '<phase>',
     flags: { 'dry-run': 'boolean', json: 'boolean', help: 'boolean' },
   },

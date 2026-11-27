@@ -69,7 +69,7 @@ function run(dir, { phase = 'problem', flags = {} } = {}) {
   return { code, out: out.join(''), err: err.join('') };
 }
 
-test('stale revokes the phase, marks every existing dependent, and reports a path that is absent as skipped', async () => {
+test('stale revokes the phase, marks its approved dependents, and reports a path that is absent as skipped', async () => {
   const dir = await project({ problem: documentOf('problem'), design: documentOf('design') });
   const briefBefore = readDocument(await text(dir, 'problem'));
 
@@ -122,7 +122,7 @@ test('a dependent that is already stale is left untouched and is not counted as 
   await rm(dir, { recursive: true, force: true });
 });
 
-test('staleness propagates transitively: every existing dependent is reached through the chain', async () => {
+test('staleness propagates transitively: every approved dependent is reached through the chain', async () => {
   const dir = await project({
     problem: documentOf('problem'),
     design: documentOf('design'),

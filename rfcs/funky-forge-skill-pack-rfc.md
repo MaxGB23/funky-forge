@@ -1506,3 +1506,14 @@ Superseded by `rfcs/02-method-pack-version.md`, which issue
   terminal, so the "no prompts" property of §6.2 holds only for a caller without one: it then receives
   a `reason:` and an exit code instead of a question. `--version` reads the manifest instead of
   printing a literal.
+
+## Errata
+
+- **2026-11-26 — the staleness rule is narrower than lines 422, 553 and 1075 of this record state.** Those
+  lines say an approved artifact's change marks *every* dependent `stale`. The implemented rule, and
+  the one `docs/cli.md`, `docs/method.md`, `skill/SKILL.md` and `skill/references/00-map.md` now
+  state, marks only the **approved** dependents: a dependent that was never approved keeps its bytes
+  and is reported `unchanged`, because marking it `stale` would make `check` refuse
+  `STALE_ARTIFACT` for a state that artifact never entered — and `init` creates all four artifacts
+  as `draft`. This record is settled and is not rewritten; the refinement arrived with
+  `funky-forge approve` and `funky-forge stale` (issue #71, `odd/tasks/approve-staleness.md`).

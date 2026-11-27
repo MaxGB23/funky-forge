@@ -10,7 +10,7 @@ over three revisions before the first source write; the adjudications are in `##
 
 Method source: the RFC's own decision (`rfcs/funky-forge-skill-pack-rfc.md:1259`, Q2: `check` stays
 read-only, "a separate `funky-forge stale` command may be added later") and the rule the docs already state
-(`docs/cli.md:66-67`, `skill/SKILL.md:76-80`, `skill/references/00-map.md:54-56`). No rule is invented here:
+(`docs/cli.md:68-69`, `skill/SKILL.md:76-80`, `skill/references/00-map.md:54-56`). No rule is invented here:
 every clause quotes one of those sources or the issue body, and where a decision has no source it says so
 and becomes a test.
 
@@ -74,7 +74,7 @@ and becomes a test.
   from `JD-A-004` and `JD-B-006` of round 1, `JD-A-005`/`JD-B` on `--strict` of round 2, with the write-path
   proof corrected at `JD-A-009`.)
 - **S7 — The output contract is what the sources state, and no more.** `--json` prints one object with the
-  notices on stderr, following the contract `install` states at `docs/cli.md:36`; the object shapes of
+  notices on stderr, following the contract `install` states at `docs/cli.md:38`; the object shapes of
   `approve` and `stale` are this feature's decision, each pinned by a test rather than generalized from
   another command — `calc`'s error shape (`src/commands/calc.js:126-130`) covers only the failing side.
   `--dry-run` prints the frontmatter it would write, including the `approved_at` date, and writes nothing.
@@ -235,3 +235,41 @@ and becomes a test.
   - After the corrections: `node --test` 332 tests, 332 pass, 0 fail, 0 skipped; `npm run pack:check` → 42
     packed files against 6 entries, exit 0. The corrections re-entered the second and last round the cap
     allows for this artifact, which attacks them and nothing else.
+
+- **L10** — **J2 round 2, blind `PAIR` over the corrections, adjudicated.** Artifact `dcac3c0`, tree
+  `d2b64d38…c8aae`. The round attacked the corrections and nothing else, and it paid twice over: the
+  corrections were new text, and new text is where the new false claims were.
+  - **`JD-A-001`, accepted, CRITICAL — the surface I missed.** `src/cli.js:48` printed "revoke an approval
+    and mark every existing dependent stale" in `stale --help`. The commit that claimed the rule was taught
+    "everywhere it is stated" had left the one surface a user reads without opening a file. Corrected, and
+    `funky-forge stale --help` now prints the approved-only rule.
+  - **`JD-A-002`, accepted, CRITICAL — and it was my own sentence.** `docs/method.md` step 10 made `approve`
+    the subject of propagation: "and marks the **approved** dependents `stale`". `approve` contains no
+    dependent logic at all (`grep dependen src/commands/approve.js` → 0 hits); only `stale` propagates. The
+    corrected sentence refuted its own neighbour and a reader following step 10 would have believed an
+    approval propagates when it does not.
+  - **`JD-A-003`, accepted.** `skill/references/schemas/artifacts.md:36` was corrected in its dependent clause
+    but kept "editing an artifact clears its own approval back to `draft`", which no command does. Rewritten:
+    editing leaves the hash mismatched, `check` reports `APPROVED_CONTENT_CHANGED`, and `stale` is the
+    command that revokes.
+  - **`JD-A-004` + `JD-A-005` + `JD-B-001` + `JD-B-002`, accepted, and this refutes a sentence of `L9`.**
+    `L9` said every citation had been re-verified against `9e96f93` — it had, and then the correction itself
+    shifted `docs/cli.md` by two lines, so `:36` became `:38` and `:66-67` became `:68-69`. A citation
+    verified against one commit and published beside another is a hypothesis again. Both now point at the
+    sentence that holds at `dcac3c0`.
+  - **`JD-A-006`, accepted.** The README condition said `stale` comes "first" while sitting after
+    `calc --write`, itself a write that leaves an approved estimate lying, and `<phase>` was unsubstituted.
+    Reworded so the line is runnable and its position no longer claims an order it cannot keep.
+  - **`JD-A-007`, accepted.** `1863 insertions, 200 deletions` described the tree before the corrections; the
+    delivered range is `1953` and `223`. A number with the wrong noun is one claim failing in two halves.
+  - **`JD-A-008`, accepted.** This record descends from an RFC that still says every dependent is marked
+    `stale` (lines 422, 553, 1075), and a settled record is corrected by a dated `## Errata`, never
+    rewritten. The Errata entry is dated `2026-11-26` and names the three lines and the refinement.
+  - **`JD-A-009`, accepted.** The `JD-A-001` bullet said "seven surfaces" and listed eight; `docs/testing.md`
+    belongs to `JD-A-005`. Corrected.
+  - **`JD-A-010`, accepted.** Two test names still stated the pre-`L8` contract. The assertions were right
+    because the fixtures' dependents are approved, so the names were the only false part — and
+    `docs/testing.md` makes the name part of the contract.
+  - The round cap for this artifact is now spent (two judged rounds, plus one faulted launch that spends
+    none). What stands is recorded above with the commands that produced it: `node --test` 332 tests, 332
+    pass, 0 fail, 0 skipped; `npm run pack:check` 42 packed files against 6 entries, exit 0.

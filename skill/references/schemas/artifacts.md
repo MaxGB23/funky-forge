@@ -33,8 +33,10 @@ Dependencies are phase names. The mapping to files and gate reports is fixed by 
 ## Status rules
 
 1. `approved` requires every dependency `approved` (`DEPENDENCY_NOT_APPROVED`).
-2. Editing an artifact clears its own approval back to `draft` and marks its **approved** dependents
-   `stale`; a dependent that was never approved keeps its bytes and is reported `unchanged`.
+2. Editing an artifact does not rewrite its own frontmatter: the body stops matching `approved_hash`,
+   so `check` reports `APPROVED_CONTENT_CHANGED` until the artifact is re-gated.
+   `funky-forge stale <phase>` is the command that revokes the approval and marks its **approved**
+   dependents `stale`; a dependent that was never approved keeps its bytes and is reported `unchanged`.
 3. `check` refuses to pass a `stale` artifact for approval (`STALE_ARTIFACT`).
 4. `stale` keeps content; it only loses approval.
 5. `rejected` cannot advance until rewritten.

@@ -127,7 +127,7 @@ funky-forge approve problem --by "you" # writes status, approver, date and body 
 # ... write .funky-forge/design.md, then:
 funky-forge check design               # estimate depends on an approved design
 funky-forge calc --write               # needs assumptions.hourly_rate and the first work blocks
-# editing an artifact that is already approved? run funky-forge stale <phase> first
+# editing an already-approved .funky-forge/<phase>.md? run: funky-forge stale <phase>
 ```
 
 ## 📚 Documentation

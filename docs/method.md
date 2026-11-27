@@ -25,10 +25,10 @@ One path for every project; only the depth varies.
 8. Run `check <phase>` again; it must pass with the report on disk.
 9. Present the findings and the decision to the human.
 10. On approval: run `funky-forge approve <phase> --by <name>`. It refuses unless `check` would
-    pass, writes `status`, `approved_by`, `approved_at` and `approved_hash` itself, and marks the
-    **approved** dependents `stale` — a dependent that was never approved keeps its bytes. Append the
-    decision to `decisions.md`. After editing an approved artifact, run `funky-forge stale <phase>`
-    instead of hand-editing the state.
+    pass, and writes `status`, `approved_by`, `approved_at` and `approved_hash` itself. Append the
+    decision to `decisions.md`. After editing an artifact that was already approved, run
+    `funky-forge stale <phase>`: it revokes that approval and marks its **approved** dependents
+    `stale`, while a dependent that was never approved keeps its bytes.
 
 Rules that are not negotiable:
 
