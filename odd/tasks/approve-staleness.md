@@ -118,9 +118,9 @@ and becomes a test.
 - **`calc --write` leaves a lying approval.** It rewrites the body of an approved estimate, prints
   `APPROVED_CONTENT_CHANGED` and leaves `status: approved` (`src/commands/calc.js:71-74`). This feature makes
   the state repairable (`stale`, then `approve`) but does not change `calc`, because that is a behaviour
-  change to a command this issue does not own. Follow-up issue.
+  change to a command this issue does not own: #73.
 - **`init --help` misdescribes `--force`.** One shared summary at `src/cli.js:64`, already recorded at
-  `odd/tasks/method-pack-version.md:106-110`. Not touched here for the same reason.
+  `odd/tasks/method-pack-version.md:106-110`. Not touched here for the same reason: #74.
 
 ## Log
 
